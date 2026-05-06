@@ -55,12 +55,59 @@ export async function getStudents() {
   return useKV ? readKV() : readFS();
 }
 
-export async function addStudent(student) {
+/**
+ * Adiciona aluno OU faz merge se já existir um com mesmo telefone.
+ * - Match por telefone (suffix de 10+ dígitos pra ser tolerante a DDI/máscara)
+ * - Se match: mantém aluno existente e só adiciona follow-ups novos (não duplica tags)
+ * - Se não match: insere no topo da lista
+ *
+ * Retorna { student, created: true|false } pra UI saber o que aconteceu.
+ */
+export async function upsertStudent(incoming) {
   const list = useKV ? await readKV() : await readFS();
-  list.unshift(student);
-  if (useKV) await writeKV(list);
-  else await writeFS(list);
-  return student;
+  const phoneKey = (s) => String(s || "").replace(/\D/g, "").slice(-10);
+  const incomingKey = phoneKey(incoming.phone);
+
+  let existingIdx = -1;
+  if (incomingKey.length >= 8) {
+    existingIdx = list.findIndex((s) => phoneKey(s.phone) === incomingKey);
+  }
+
+  if (existingIdx === -1) {
+    // Novo aluno
+    list.unshift(incoming);
+    if (useKV) await writeKV(list);
+    else await writeFS(list);
+    return { student: incoming, created: true };
+  }
+
+  // Merge: aluno existe → adiciona só os follow-ups com tags novas
+  const existing = list[existingIdx];
+  const existingTags = new Set((existing.followUps || []).map((f) => f.tag));
+  const newFollowUps = (incoming.followUps || []).filter(
+    (f) => !existingTags.has(f.tag)
+  );
+
+  if (newFollowUps.length > 0) {
+    existing.followUps = [...(existing.followUps || []), ...newFollowUps];
+    // Atualiza obs/seller se vieram preenchidos (opcional, sem destruir o existente)
+    if (incoming.observations && !existing.observations) {
+      existing.observations = incoming.observations;
+    }
+    if (incoming.seller && existing.seller === "Sem vendedor") {
+      existing.seller = incoming.seller;
+    }
+    list[existingIdx] = existing;
+    if (useKV) await writeKV(list);
+    else await writeFS(list);
+  }
+  return { student: existing, created: false };
+}
+
+// Mantido pra compat — chama upsertStudent
+export async function addStudent(student) {
+  const { student: s } = await upsertStudent(student);
+  return s;
 }
 
 /**

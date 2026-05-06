@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addStudent, buildStudentFromWebhook } from "@/lib/db";
+import { upsertStudent, buildStudentFromWebhook } from "@/lib/db";
 
 // Força runtime Node (default no App Router, mas explicitar evita surpresa
 // se algum import do db acabar puxando coisas Node-only).
@@ -44,8 +44,8 @@ export async function POST(req) {
       );
     }
 
-    const saved = await addStudent(student);
-    return NextResponse.json({ ok: true, student: saved });
+    const { student: saved, created } = await upsertStudent(student);
+    return NextResponse.json({ ok: true, student: saved, created });
   } catch (err) {
     console.error("[webhook] erro:", err);
     return NextResponse.json(
