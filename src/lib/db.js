@@ -81,26 +81,40 @@ export async function upsertStudent(incoming) {
     return { student: incoming, created: true };
   }
 
-  // Merge: aluno existe → adiciona só os follow-ups com tags novas
+  // Aluno existe → SUBSTITUI follow-ups pendentes pelos novos.
+  // Mantém follow-ups concluídos (status != "pendente") como histórico.
+  // Regra: cada aluno tem só 1 tag pendente por vez. Se vendedor aplicar
+  // tag diferente (ex: aluno mudou de ideia "me chama em 15 dias"), a tag
+  // antiga pendente é descartada — ele é chamado conforme a vontade atual.
   const existing = list[existingIdx];
-  const existingTags = new Set((existing.followUps || []).map((f) => f.tag));
-  const newFollowUps = (incoming.followUps || []).filter(
-    (f) => !existingTags.has(f.tag)
+  const concluded = (existing.followUps || []).filter(
+    (f) => f.status && f.status !== "pendente"
+  );
+  const newPending = incoming.followUps || [];
+
+  // Se o webhook chegou com a MESMA tag que já tá pendente, idempotente:
+  // mantém a existente (preserva calledAt:null original e qualquer obs lá).
+  const existingPending = (existing.followUps || []).filter(
+    (f) => !f.status || f.status === "pendente"
+  );
+  const incomingTags = new Set(newPending.map((f) => f.tag));
+  const samePending = existingPending.filter((f) => incomingTags.has(f.tag));
+  const incomingNew = newPending.filter(
+    (f) => !existingPending.some((e) => e.tag === f.tag)
   );
 
-  if (newFollowUps.length > 0) {
-    existing.followUps = [...(existing.followUps || []), ...newFollowUps];
-    // Atualiza obs/seller se vieram preenchidos (opcional, sem destruir o existente)
-    if (incoming.observations && !existing.observations) {
-      existing.observations = incoming.observations;
-    }
-    if (incoming.seller && existing.seller === "Sem vendedor") {
-      existing.seller = incoming.seller;
-    }
-    list[existingIdx] = existing;
-    if (useKV) await writeKV(list);
-    else await writeFS(list);
+  existing.followUps = [...concluded, ...samePending, ...incomingNew];
+
+  // Atualiza obs/seller se vieram preenchidos (sem destruir o existente)
+  if (incoming.observations && !existing.observations) {
+    existing.observations = incoming.observations;
   }
+  if (incoming.seller && existing.seller === "Sem vendedor") {
+    existing.seller = incoming.seller;
+  }
+  list[existingIdx] = existing;
+  if (useKV) await writeKV(list);
+  else await writeFS(list);
   return { student: existing, created: false };
 }
 
