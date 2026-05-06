@@ -65,59 +65,6 @@ const getTagClass = (tag) => {
   return "";
 };
 
-const buildSeed = () => [
-  {
-    id: 1, name: "Lucas Silva", phone: "5511999991111",
-    assignmentDate: getPastDate(3), seller: "Carlos", observations: "Demonstrou interesse no plano premium.",
-    followUps: [{ tag: "3 dias", status: "pendente", outcome: null, calledAt: null }],
-  },
-  {
-    id: 2, name: "Mariana Costa", phone: "5521988882222",
-    assignmentDate: getPastDate(8), seller: "Marina", observations: "",
-    followUps: [
-      { tag: "3 dias", status: "chamado", outcome: "Atendeu", calledAt: getPastDate(5) },
-      { tag: "7 dias", status: "pendente", outcome: null, calledAt: null },
-    ],
-  },
-  {
-    id: 3, name: "Juliana Santos", phone: "5581922228888",
-    assignmentDate: getPastDate(15), seller: "Diego", observations: "Pediu pra retornar depois das 18h.",
-    followUps: [{ tag: "15 dias", status: "pendente", outcome: null, calledAt: null }],
-  },
-  {
-    id: 4, name: "João Pedro", phone: "5531977773333",
-    assignmentDate: getPastDate(2), seller: "Carlos", observations: "",
-    followUps: [{ tag: "7 dias", status: "pendente", outcome: null, calledAt: null }],
-  },
-  {
-    id: 5, name: "Ana Beatriz", phone: "5541966664444",
-    assignmentDate: getPastDate(0), seller: "Marina", observations: "",
-    followUps: [{ tag: "7 dias", status: "pendente", outcome: null, calledAt: null }],
-  },
-  {
-    id: 6, name: "Carlos Eduardo", phone: "5551955555555",
-    assignmentDate: getPastDate(5), seller: "Diego", observations: "",
-    followUps: [{ tag: "15 dias", status: "pendente", outcome: null, calledAt: null }],
-  },
-  {
-    id: 7, name: "Fernanda Lima", phone: "5561944446666",
-    assignmentDate: getPastDate(10), seller: "Sem vendedor", observations: "",
-    followUps: [{ tag: "30 dias", status: "pendente", outcome: null, calledAt: null }],
-  },
-  {
-    id: 8, name: "Rafael Almeida", phone: "5571933337777",
-    assignmentDate: getPastDate(29), seller: "Carlos", observations: "",
-    followUps: [{ tag: "30 dias", status: "pendente", outcome: null, calledAt: null }],
-  },
-  {
-    id: 9, name: "Pedro Henrique", phone: "5511911119999",
-    assignmentDate: getPastDate(4), seller: "Marina", observations: "Estava em reunião, retornar amanhã.",
-    followUps: [
-      { tag: "3 dias", status: "pendente", outcome: null, calledAt: null },
-      { tag: "7 dias", status: "pendente", outcome: null, calledAt: null },
-    ],
-  },
-];
 
 export default function Home() {
   const [students, setStudents] = useState([]);
@@ -175,12 +122,13 @@ export default function Home() {
         setStudents(parsed.students || []);
         setHistory(parsed.history || {});
       } else {
-        setStudents(buildSeed());
+        // Inicia vazio — alunos chegam via webhook ManyChat ou botão Adicionar
+        setStudents([]);
       }
       const savedTheme = localStorage.getItem(THEME_KEY);
       if (savedTheme === "dark") setTheme("dark");
     } catch {
-      setStudents(buildSeed());
+      setStudents([]);
     }
     setHydrated(true);
   }, []);
