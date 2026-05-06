@@ -9,6 +9,7 @@ const SELLERS = ["Carlos", "Marina", "Diego", "Sem vendedor"];
 
 const STORAGE_KEY = "crm-students-v2";
 const THEME_KEY = "crm-theme";
+const INGESTED_KEY = "crm-ingested-server-ids"; // ids de alunos do webhook já trazidos pra cá
 
 const getPastDate = (days) => {
   const d = new Date();
@@ -185,6 +186,46 @@ export default function Home() {
     }
     setHydrated(true);
   }, []);
+
+  // ── Ingestão one-way de alunos vindos do webhook (ManyChat) ─────────────
+  // Faz fetch de /api/students na hidratação e a cada 60s. Pra cada aluno do
+  // server cujo id ainda não foi ingerido, adiciona na lista local. Edits
+  // locais (calls, observações) ficam preservados — server só é "fonte de
+  // novos cadastros", não substitui.
+  useEffect(() => {
+    if (!hydrated) return;
+    let cancelled = false;
+
+    const ingest = async () => {
+      try {
+        const res = await fetch("/api/students", { cache: "no-store" });
+        if (!res.ok) return;
+        const { students: serverList } = await res.json();
+        if (cancelled || !Array.isArray(serverList) || !serverList.length) return;
+
+        const ingestedRaw = localStorage.getItem(INGESTED_KEY);
+        const ingested = new Set(ingestedRaw ? JSON.parse(ingestedRaw) : []);
+        const fresh = serverList.filter((s) => !ingested.has(s.id));
+        if (!fresh.length) return;
+
+        setStudents((prev) => {
+          // dedup adicional por phone (caso o mesmo aluno tenha sido cadastrado manual antes)
+          const phones = new Set(prev.map((p) => onlyDigits(p.phone)));
+          const novos = fresh.filter((s) => !phones.has(onlyDigits(s.phone)));
+          return [...novos, ...prev];
+        });
+
+        for (const s of fresh) ingested.add(s.id);
+        localStorage.setItem(INGESTED_KEY, JSON.stringify([...ingested]));
+      } catch {
+        // silencia — em dev sem servidor o fetch falha, tudo bem
+      }
+    };
+
+    ingest();
+    const interval = setInterval(ingest, 60_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
