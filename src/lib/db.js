@@ -124,6 +124,34 @@ export async function addStudent(student) {
   return s;
 }
 
+/** Apaga TUDO do storage (FS ou KV). Use com token na rota DELETE. */
+export async function clearAll() {
+  if (useKV) {
+    const kv = await getKV();
+    await kv.del(KV_KEY);
+  } else {
+    await writeFS([]);
+  }
+}
+
+/**
+ * Apaga aluno cujo phone bate (suffix de 10 dígitos).
+ * Retorna número de alunos removidos.
+ */
+export async function deleteStudentByPhone(phone) {
+  const phoneKey = (s) => String(s || "").replace(/\D/g, "").slice(-10);
+  const target = phoneKey(phone);
+  if (target.length < 8) return 0;
+  const list = useKV ? await readKV() : await readFS();
+  const filtered = list.filter((s) => phoneKey(s.phone) !== target);
+  const removed = list.length - filtered.length;
+  if (removed > 0) {
+    if (useKV) await writeKV(filtered);
+    else await writeFS(filtered);
+  }
+  return removed;
+}
+
 /**
  * Normaliza payload do ManyChat → formato interno do CRM.
  * O page.js espera:
