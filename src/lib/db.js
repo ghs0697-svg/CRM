@@ -83,11 +83,51 @@ export function buildStudentFromWebhook(payload) {
   const phone = onlyDigits(
     payload.phone || payload["Telefone"] || payload.whatsapp || ""
   );
-  const tagRaw =
-    payload.tag || payload["Tag de Tempo"] || payload.time_tag || "7 dias";
 
-  const tagDigits = String(tagRaw).match(/\d+/);
-  const tag = tagDigits ? `${tagDigits[0]} dias` : "7 dias";
+  // Aceita: tag (singular), tags (plural array OU string separada por vírgula).
+  // Exemplos válidos:
+  //   "tag": "7 dias"
+  //   "tag": "7"
+  //   "tags": ["3 dias", "7 dias", "15 dias", "30 dias"]
+  //   "tags": "3,7,15,30"
+  //   "tags": "3 dias, 7 dias"
+  const rawTags =
+    payload.tags ??
+    payload.tag ??
+    payload["Tag de Tempo"] ??
+    payload.time_tag ??
+    "7 dias";
+
+  const ALLOWED_DAYS = [3, 7, 15, 30];
+  const list = Array.isArray(rawTags)
+    ? rawTags
+    : String(rawTags).split(/[,;]/);
+
+  const followUps = list
+    .map((t) => {
+      const m = String(t).match(/\d+/);
+      return m ? parseInt(m[0], 10) : null;
+    })
+    .filter((n) => ALLOWED_DAYS.includes(n))
+    // remove duplicatas mantendo ordem (3 < 7 < 15 < 30)
+    .filter((n, i, arr) => arr.indexOf(n) === i)
+    .sort((a, b) => a - b)
+    .map((n) => ({
+      tag: `${n} dias`,
+      status: "pendente",
+      outcome: null,
+      calledAt: null,
+    }));
+
+  // Fallback se nada válido veio
+  if (followUps.length === 0) {
+    followUps.push({
+      tag: "7 dias",
+      status: "pendente",
+      outcome: null,
+      calledAt: null,
+    });
+  }
 
   return {
     id: Date.now() + Math.floor(Math.random() * 1000),
@@ -96,9 +136,7 @@ export function buildStudentFromWebhook(payload) {
     assignmentDate: isoToday,
     seller: payload.seller || "Sem vendedor",
     observations: payload.observations || payload.obs || "",
-    followUps: [
-      { tag, status: "pendente", outcome: null, calledAt: null },
-    ],
+    followUps,
     source: "manychat",
   };
 }

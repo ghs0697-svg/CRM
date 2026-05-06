@@ -5,7 +5,7 @@ import styles from "./page.module.css";
 
 const TAGS = ["3 dias", "7 dias", "15 dias", "30 dias"];
 const OUTCOMES = ["Atendeu", "Não atendeu", "Comprou", "Não interessado", "Remarcar"];
-const SELLERS = ["Carlos", "Marina", "Diego", "Sem vendedor"];
+const SELLERS = ["Ana", "Ivan", "Andressa", "Sem vendedor"];
 
 const STORAGE_KEY = "crm-students-v2";
 const THEME_KEY = "crm-theme";
@@ -377,19 +377,7 @@ export default function Home() {
   return (
     <div className={`${styles.container} ${theme === "dark" ? "dark" : ""}`}>
       <aside className={styles.sidebar}>
-        <div className={styles.logo}>M</div>
-        <div className={`${styles.navIcon} ${styles.active}`} title="Painel">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
-            <rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
-          </svg>
-        </div>
-        <div className={styles.navIcon} title="Vendedores">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-          </svg>
-        </div>
+        <div className={styles.logo}>G</div>
         <button
           className={styles.themeToggle}
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -416,7 +404,7 @@ export default function Home() {
         <header className={styles.header}>
           <div className={styles.headerTop}>
             <div className={styles.titleWrapper}>
-              <h1>Método GH</h1>
+              <h1>CRM GH</h1>
               <p>Gerenciamento de Retornos (Follow-ups)</p>
             </div>
 
