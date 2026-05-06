@@ -5,7 +5,6 @@ import styles from "./page.module.css";
 
 const TAGS = ["3 dias", "7 dias", "15 dias", "30 dias"];
 const OUTCOMES = ["Atendeu", "Não atendeu", "Comprou", "Não interessado", "Remarcar"];
-const SELLERS = ["Ana", "Ivan", "Andressa", "Sem vendedor"];
 
 const STORAGE_KEY = "crm-students-v2";
 const THEME_KEY = "crm-theme";
@@ -128,12 +127,11 @@ export default function Home() {
 
   const [tagFilter, setTagFilter] = useState("Todos");
   const [statusFilter, setStatusFilter] = useState("pendente");
-  const [sellerFilter, setSellerFilter] = useState("Todos");
   const [search, setSearch] = useState("");
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newStudent, setNewStudent] = useState({
-    name: "", phone: "", tags: ["3 dias"], seller: SELLERS[0], observations: "",
+    name: "", phone: "", tags: ["3 dias"], observations: "",
   });
 
   const [callModal, setCallModal] = useState(null);
@@ -241,7 +239,6 @@ export default function Home() {
     const q = search.trim().toLowerCase();
     const items = [];
     for (const student of students) {
-      if (sellerFilter !== "Todos" && student.seller !== sellerFilter) continue;
       if (q) {
         const phoneDigits = onlyDigits(student.phone);
         const matches = student.name.toLowerCase().includes(q) || phoneDigits.includes(onlyDigits(q));
@@ -255,7 +252,7 @@ export default function Home() {
       }
     }
     return items;
-  }, [students, search, sellerFilter, tagFilter, statusFilter]);
+  }, [students, search, tagFilter, statusFilter]);
 
   const overdueItems = followUpItems.filter((i) => i.fu.status === "pendente" && i.diff < 0);
   const todayItems = followUpItems.filter((i) => i.fu.status === "pendente" && i.diff === 0);
@@ -306,7 +303,6 @@ export default function Home() {
         name: newStudent.name,
         phone: onlyDigits(newStudent.phone),
         assignmentDate: today,
-        seller: newStudent.seller,
         observations: newStudent.observations,
         followUps: newStudent.tags.map((tag) => ({
           tag, status: "pendente", outcome: null, calledAt: null,
@@ -315,7 +311,7 @@ export default function Home() {
       ...prev,
     ]);
     setIsAddOpen(false);
-    setNewStudent({ name: "", phone: "", tags: ["3 dias"], seller: SELLERS[0], observations: "" });
+    setNewStudent({ name: "", phone: "", tags: ["3 dias"], observations: "" });
   };
 
   const toggleTagInNew = (tag) => {
@@ -334,7 +330,6 @@ export default function Home() {
               ...s,
               name: editModal.name,
               phone: onlyDigits(editModal.phone),
-              seller: editModal.seller,
               observations: editModal.observations,
               followUps: editModal.tags.map((tag) => {
                 const existing = s.followUps.find((f) => f.tag === tag);
@@ -452,17 +447,6 @@ export default function Home() {
             />
           </div>
 
-          <select
-            className={styles.sellerSelect}
-            value={sellerFilter}
-            onChange={(e) => setSellerFilter(e.target.value)}
-            aria-label="Filtrar por vendedor"
-          >
-            <option value="Todos">Todos vendedores</option>
-            {SELLERS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
         </div>
 
         {(overdueItems.length > 0 || todayItems.length > 0) && (
@@ -625,14 +609,6 @@ export default function Home() {
 
                       <div className={styles.cardMeta}>
                         <span className={`${styles.tag} ${getTagClass(fu.tag)}`}>{fu.tag}</span>
-                        {student.seller && student.seller !== "Sem vendedor" && (
-                          <span className={styles.sellerTag}>
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>
-                            </svg>
-                            {student.seller}
-                          </span>
-                        )}
                       </div>
 
                       <div className={styles.cardDates}>
@@ -704,7 +680,6 @@ export default function Home() {
                                 id: student.id,
                                 name: student.name,
                                 phone: student.phone,
-                                seller: student.seller || SELLERS[0],
                                 observations: student.observations || "",
                                 tags: student.followUps.map((f) => f.tag),
                               })
@@ -807,19 +782,6 @@ export default function Home() {
               </div>
 
               <div className={styles.formGroup}>
-                <label>Vendedor Responsável</label>
-                <select
-                  className={styles.select}
-                  value={newStudent.seller}
-                  onChange={(e) => setNewStudent({ ...newStudent, seller: e.target.value })}
-                >
-                  {SELLERS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className={styles.formGroup}>
                 <label>Tags (uma ou mais)</label>
                 <div className={styles.checkboxGrid}>
                   {TAGS.map((t) => {
@@ -917,9 +879,6 @@ export default function Home() {
                             <div className={styles.bucketSub}>{formatPhone(student.phone)}</div>
                             <div className={styles.bucketMeta}>
                               <span className={`${styles.tag} ${getTagClass(fu.tag)}`}>{fu.tag}</span>
-                              {student.seller && student.seller !== "Sem vendedor" && (
-                                <span className={styles.sellerTag}>{student.seller}</span>
-                              )}
                               <span
                                 className={`${styles.cardCountdown} ${
                                   isOverdue ? styles.countdownOverdue : styles.countdownToday
@@ -1008,19 +967,6 @@ export default function Home() {
                   value={editModal.phone}
                   onChange={(e) => setEditModal({ ...editModal, phone: e.target.value })}
                 />
-              </div>
-
-              <div className={styles.formGroup}>
-                <label>Vendedor</label>
-                <select
-                  className={styles.select}
-                  value={editModal.seller}
-                  onChange={(e) => setEditModal({ ...editModal, seller: e.target.value })}
-                >
-                  {SELLERS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
               </div>
 
               <div className={styles.formGroup}>
