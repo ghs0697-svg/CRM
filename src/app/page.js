@@ -134,42 +134,79 @@ export default function Home() {
   }, []);
 
   // ── Ingestão one-way de alunos vindos do webhook (ManyChat) ─────────────
-  // Faz fetch de /api/students na hidratação e a cada 60s. Pra cada aluno do
-  // server cujo id ainda não foi ingerido, adiciona na lista local. Edits
-  // locais (calls, observações) ficam preservados — server só é "fonte de
-  // novos cadastros", não substitui.
+  // Sincronização com server (KV via /api/students). Hidratação + poll 60s.
+  //
+  // Semântica:
+  //   - Aluno NOVO no server (não existe local) → adiciona no topo.
+  //   - Aluno JÁ EXISTE local (match por phone) → atualiza follow-ups com a
+  //     versão do server (representa "vontade atual" do aluno via webhook),
+  //     PRESERVANDO status/outcome/calledAt das tags já chamadas localmente.
+  //   - Aluno deletado localmente: a deleção também apaga no server (ver
+  //     deleteStudent), então não volta no próximo poll.
   useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
 
-    const ingest = async () => {
+    const phoneKey = (p) => onlyDigits(p).slice(-10);
+
+    const sync = async () => {
       try {
         const res = await fetch("/api/students", { cache: "no-store" });
         if (!res.ok) return;
         const { students: serverList } = await res.json();
-        if (cancelled || !Array.isArray(serverList) || !serverList.length) return;
-
-        const ingestedRaw = localStorage.getItem(INGESTED_KEY);
-        const ingested = new Set(ingestedRaw ? JSON.parse(ingestedRaw) : []);
-        const fresh = serverList.filter((s) => !ingested.has(s.id));
-        if (!fresh.length) return;
+        if (cancelled || !Array.isArray(serverList)) return;
 
         setStudents((prev) => {
-          // dedup adicional por phone (caso o mesmo aluno tenha sido cadastrado manual antes)
-          const phones = new Set(prev.map((p) => onlyDigits(p.phone)));
-          const novos = fresh.filter((s) => !phones.has(onlyDigits(s.phone)));
-          return [...novos, ...prev];
-        });
+          let changed = false;
+          const localByPhone = new Map(prev.map((s) => [phoneKey(s.phone), s]));
+          const next = [...prev];
 
-        for (const s of fresh) ingested.add(s.id);
-        localStorage.setItem(INGESTED_KEY, JSON.stringify([...ingested]));
+          for (const sv of serverList) {
+            const key = phoneKey(sv.phone);
+            const local = localByPhone.get(key);
+
+            if (!local) {
+              // Novo aluno no server → insere
+              next.unshift(sv);
+              changed = true;
+              continue;
+            }
+
+            // Aluno existe localmente. Faz merge de follow-ups:
+            // chamadas concluídas locais vencem o server pro mesmo tag.
+            const localByTag = new Map(
+              (local.followUps || []).map((f) => [f.tag, f])
+            );
+            const mergedFollowUps = (sv.followUps || []).map((svFu) => {
+              const lf = localByTag.get(svFu.tag);
+              if (lf && lf.status && lf.status !== "pendente") return lf;
+              return svFu;
+            });
+
+            const localStr = JSON.stringify(local.followUps || []);
+            const mergedStr = JSON.stringify(mergedFollowUps);
+            if (localStr !== mergedStr) {
+              const idx = next.findIndex((s) => s === local);
+              if (idx !== -1) {
+                next[idx] = {
+                  ...local,
+                  observations: local.observations || sv.observations,
+                  followUps: mergedFollowUps,
+                };
+                changed = true;
+              }
+            }
+          }
+
+          return changed ? next : prev;
+        });
       } catch {
-        // silencia — em dev sem servidor o fetch falha, tudo bem
+        // silencia — dev sem servidor / offline
       }
     };
 
-    ingest();
-    const interval = setInterval(ingest, 60_000);
+    sync();
+    const interval = setInterval(sync, 60_000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [hydrated]);
 
@@ -291,11 +328,19 @@ export default function Home() {
   };
 
   const deleteStudent = (id) => {
+    // Apaga local imediatamente (UI snappy)
+    const target = students.find((s) => s.id === id);
     setStudents((prev) => prev.filter((s) => s.id !== id));
     setHistory((prev) => {
       const { [id]: _, ...rest } = prev;
       return rest;
     });
+    // Apaga no server também (senão o sync de 60s ressuscita o aluno)
+    if (target?.phone) {
+      const phone = onlyDigits(target.phone);
+      fetch(`/api/students?phone=${encodeURIComponent(phone)}`, { method: "DELETE" })
+        .catch(() => { /* silencia — local já foi apagado, próximo F5 reconcilia */ });
+    }
     setEditModal(null);
   };
 
