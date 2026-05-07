@@ -25,8 +25,18 @@ async function parseBody(req) {
  * POST /api/webhook
  *
  * Body esperado (qualquer um destes formatos serve):
- *   { "name": "João da Silva", "phone": "5511999991111", "tag": "7 dias" }
- *   { "Nome Completo": "...", "Telefone": "...", "Tag de Tempo": "7 dias" }
+ *
+ *   NOVO (recomendado — 1 tag genérica + custom field numérico no ManyChat):
+ *     {
+ *       "name": "João da Silva",
+ *       "phone": "5511999991111",
+ *       "subscriber_id": "1234567890",
+ *       "dias": 17
+ *     }
+ *
+ *   LEGADO (4 tags fixas — mantido pra compat):
+ *     { "name": "...", "phone": "...", "tag": "7 dias" }
+ *     { "Nome Completo": "...", "Telefone": "...", "Tag de Tempo": "7 dias" }
  *
  * Campos opcionais: seller, observations.
  *

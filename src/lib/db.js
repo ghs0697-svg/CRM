@@ -112,6 +112,12 @@ export async function upsertStudent(incoming) {
   if (incoming.seller && existing.seller === "Sem vendedor") {
     existing.seller = incoming.seller;
   }
+  // subscriberId do ManyChat: sempre prefere o mais recente (subscriber pode
+  // ser recriado, e usar o antigo causaria erro 404 quando o CRM chamasse o
+  // ManyChat de volta no vencimento).
+  if (incoming.subscriberId) {
+    existing.subscriberId = incoming.subscriberId;
+  }
   list[existingIdx] = existing;
   if (useKV) await writeKV(list);
   else await writeFS(list);
@@ -155,7 +161,18 @@ export async function deleteStudentByPhone(phone) {
 /**
  * Normaliza payload do ManyChat → formato interno do CRM.
  * O page.js espera:
- *   { id, name, phone, assignmentDate, seller, observations, followUps: [{tag, status, outcome, calledAt}] }
+ *   { id, name, phone, subscriberId, assignmentDate, seller, observations,
+ *     followUps: [{tag, status, outcome, calledAt}] }
+ *
+ * Formatos de payload aceitos:
+ *
+ *   NOVO (1 tag genérica + custom field numérico no ManyChat):
+ *     { name, phone, subscriber_id, dias: 17 }
+ *     → cria 1 follow-up com tag "17 dias" vencendo hoje + 17 dias.
+ *
+ *   LEGADO (4 tags fixas — mantido pra compat):
+ *     { name, phone, tag: "7 dias" }
+ *     { name, phone, tags: ["3 dias", "15 dias"] }
  */
 export function buildStudentFromWebhook(payload) {
   const onlyDigits = (s) => String(s || "").replace(/\D/g, "");
@@ -173,40 +190,70 @@ export function buildStudentFromWebhook(payload) {
     payload.phone || payload["Telefone"] || payload.whatsapp || ""
   );
 
-  // Aceita: tag (singular), tags (plural array OU string separada por vírgula).
-  // Exemplos válidos:
-  //   "tag": "7 dias"
-  //   "tag": "7"
-  //   "tags": ["3 dias", "7 dias", "15 dias", "30 dias"]
-  //   "tags": "3,7,15,30"
-  //   "tags": "3 dias, 7 dias"
-  const rawTags =
-    payload.tags ??
-    payload.tag ??
-    payload["Tag de Tempo"] ??
-    payload.time_tag ??
-    "7 dias";
+  // ManyChat subscriber ID — usado pra chamar de volta a API do ManyChat
+  // quando vencer o follow-up. Variável "ID do contato" no ManyChat PT-BR
+  // resolve pro mesmo valor que User ID em EN.
+  const subscriberId =
+    String(
+      payload.subscriber_id ||
+        payload.subscriberId ||
+        payload["ID do contato"] ||
+        payload.user_id ||
+        ""
+    ).trim() || null;
 
-  const ALLOWED_DAYS = [3, 7, 15, 30];
-  const list = Array.isArray(rawTags)
-    ? rawTags
-    : String(rawTags).split(/[,;]/);
+  // Helper: monta tag string com plural correto.
+  const tagFromDays = (n) => `${n} ${n === 1 ? "dia" : "dias"}`;
+  const MIN_DAYS = 1;
+  const MAX_DAYS = 365;
 
-  const followUps = list
-    .map((t) => {
-      const m = String(t).match(/\d+/);
-      return m ? parseInt(m[0], 10) : null;
-    })
-    .filter((n) => ALLOWED_DAYS.includes(n))
-    // remove duplicatas mantendo ordem (3 < 7 < 15 < 30)
-    .filter((n, i, arr) => arr.indexOf(n) === i)
-    .sort((a, b) => a - b)
-    .map((n) => ({
-      tag: `${n} dias`,
-      status: "pendente",
-      outcome: null,
-      calledAt: null,
-    }));
+  let followUps = [];
+
+  // Novo formato: "dias" como número (custom field numérico do ManyChat).
+  // Ex: { dias: 17 } → follow-up vencendo em 17 dias.
+  const rawDias =
+    payload.dias ??
+    payload.days ??
+    payload["Follow-up"] ??
+    payload["Agendar follow"];
+  const diasMatch =
+    rawDias != null && String(rawDias).trim() !== ""
+      ? String(rawDias).match(/\d+/)
+      : null;
+  const diasNum = diasMatch ? parseInt(diasMatch[0], 10) : NaN;
+
+  if (Number.isFinite(diasNum) && diasNum >= MIN_DAYS && diasNum <= MAX_DAYS) {
+    followUps = [
+      {
+        tag: tagFromDays(diasNum),
+        status: "pendente",
+        outcome: null,
+        calledAt: null,
+      },
+    ];
+  } else {
+    // Legado: parseia "tag"/"tags" strings ("3 dias", "7 dias" etc).
+    // Aceita: tag (singular), tags (plural array OU string separada por vírgula).
+    const rawTags =
+      payload.tags ?? payload.tag ?? payload["Tag de Tempo"] ?? payload.time_tag ?? "";
+    const list = Array.isArray(rawTags) ? rawTags : String(rawTags).split(/[,;]/);
+
+    followUps = list
+      .map((t) => {
+        const m = String(t).match(/\d+/);
+        return m ? parseInt(m[0], 10) : null;
+      })
+      .filter((n) => Number.isFinite(n) && n >= MIN_DAYS && n <= MAX_DAYS)
+      // remove duplicatas mantendo ordem
+      .filter((n, i, arr) => arr.indexOf(n) === i)
+      .sort((a, b) => a - b)
+      .map((n) => ({
+        tag: tagFromDays(n),
+        status: "pendente",
+        outcome: null,
+        calledAt: null,
+      }));
+  }
 
   // Fallback se nada válido veio
   if (followUps.length === 0) {
@@ -222,6 +269,7 @@ export function buildStudentFromWebhook(payload) {
     id: Date.now() + Math.floor(Math.random() * 1000),
     name: name.trim(),
     phone,
+    subscriberId,
     assignmentDate: isoToday,
     seller: payload.seller || "Sem vendedor",
     observations: payload.observations || payload.obs || "",
