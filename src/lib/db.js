@@ -141,6 +141,37 @@ export async function clearAll() {
 }
 
 /**
+ * Marca um follow-up específico (aluno + tag) como disparado pelo cron.
+ * Usado depois que o ManyChat aceita o sendFlow — pra não disparar de novo
+ * no próximo ciclo.
+ *
+ * Retorna true se atualizou, false se não achou aluno/tag.
+ */
+export async function markFollowUpFired(phone, tag, firedAt) {
+  const phoneKey = (s) => String(s || "").replace(/\D/g, "").slice(-10);
+  const target = phoneKey(phone);
+  if (target.length < 8) return false;
+  const list = useKV ? await readKV() : await readFS();
+  const idx = list.findIndex((s) => phoneKey(s.phone) === target);
+  if (idx === -1) return false;
+  const student = list[idx];
+  let changed = false;
+  student.followUps = (student.followUps || []).map((fu) => {
+    if (fu.tag === tag && !fu.firedAt) {
+      changed = true;
+      return { ...fu, firedAt };
+    }
+    return fu;
+  });
+  if (changed) {
+    list[idx] = student;
+    if (useKV) await writeKV(list);
+    else await writeFS(list);
+  }
+  return changed;
+}
+
+/**
  * Apaga aluno cujo phone bate (suffix de 10 dígitos).
  * Retorna número de alunos removidos.
  */
@@ -162,7 +193,12 @@ export async function deleteStudentByPhone(phone) {
  * Normaliza payload do ManyChat → formato interno do CRM.
  * O page.js espera:
  *   { id, name, phone, subscriberId, assignmentDate, seller, observations,
- *     followUps: [{tag, status, outcome, calledAt}] }
+ *     followUps: [{tag, status, outcome, calledAt, firedAt}] }
+ *
+ * firedAt: ISO date (YYYY-MM-DD) de quando o cron disparou o follow-up
+ * via API do ManyChat. null enquanto não disparou. Usado pra:
+ *   - evitar disparo duplicado no próximo ciclo do cron
+ *   - mostrar badge "Mensagem enviada {{data}}" no card
  *
  * Formatos de payload aceitos:
  *
@@ -229,6 +265,7 @@ export function buildStudentFromWebhook(payload) {
         status: "pendente",
         outcome: null,
         calledAt: null,
+        firedAt: null,
       },
     ];
   } else {
@@ -252,6 +289,7 @@ export function buildStudentFromWebhook(payload) {
         status: "pendente",
         outcome: null,
         calledAt: null,
+        firedAt: null,
       }));
   }
 
@@ -262,6 +300,7 @@ export function buildStudentFromWebhook(payload) {
       status: "pendente",
       outcome: null,
       calledAt: null,
+      firedAt: null,
     });
   }
 

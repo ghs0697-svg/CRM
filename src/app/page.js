@@ -296,7 +296,7 @@ export default function Home() {
         phone: onlyDigits(newStudent.phone),
         assignmentDate: today,
         observations: newStudent.observations,
-        followUps: [{ tag, status: "pendente", outcome: null, calledAt: null }],
+        followUps: [{ tag, status: "pendente", outcome: null, calledAt: null, firedAt: null }],
       },
       ...prev,
     ]);
@@ -645,6 +645,12 @@ export default function Home() {
 
                       {student.observations && (
                         <div className={styles.cardObs}>{student.observations}</div>
+                      )}
+
+                      {fu.firedAt && (
+                        <div className={styles.firedBadge} title="Mensagem automática enviada via ManyChat">
+                          📤 Mensagem enviada em {new Date(fu.firedAt).toLocaleDateString("pt-BR")}
+                        </div>
                       )}
 
                       {isDone && fu.outcome && (
