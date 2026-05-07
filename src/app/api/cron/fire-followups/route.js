@@ -6,7 +6,15 @@ export const runtime = "nodejs";
 // Sem cache: cada chamada lê estado fresh do KV.
 export const dynamic = "force-dynamic";
 
-const MANYCHAT_SEND_FLOW_URL = "https://api.manychat.com/fb/sending/sendFlow";
+// API do ManyChat — endpoint que aplica uma tag (por NOME) a um subscriber.
+// Quando aplicada, dispara qualquer automação cujo gatilho seja "Tag X
+// atribuída ao contato". É a forma factível de disparar flow externamente
+// no plano Pro (sendFlow só funciona com gatilho de External Request, que
+// não existe no Pro).
+//
+// O flow no ManyChat deve REMOVER a tag no final pra permitir reaplicação
+// futura — senão a 2ª chamada vê "tag já aplicada" e não dispara.
+const MANYCHAT_ADD_TAG_URL = "https://api.manychat.com/fb/subscriber/addTagByName";
 
 /**
  * Helper: dado uma string de tag tipo "7 dias" ou "1 dia", retorna o número.
@@ -37,12 +45,15 @@ function dueDateFor(student, fu) {
 }
 
 /**
- * Chama a Send API do ManyChat pra disparar o flow num subscriber.
+ * Aplica uma tag (por nome) num subscriber via API do ManyChat.
+ * O ManyChat detecta a tag e dispara automaticamente a automação cujo
+ * gatilho é "Tag X atribuída ao contato".
+ *
  * Retorna { ok, status, body } pra logging.
  */
-async function sendFlowToSubscriber(subscriberId, flowNs, apiKey) {
+async function applyTagToSubscriber(subscriberId, tagName, apiKey) {
   try {
-    const res = await fetch(MANYCHAT_SEND_FLOW_URL, {
+    const res = await fetch(MANYCHAT_ADD_TAG_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -50,7 +61,7 @@ async function sendFlowToSubscriber(subscriberId, flowNs, apiKey) {
       },
       body: JSON.stringify({
         subscriber_id: String(subscriberId),
-        flow_ns: flowNs,
+        tag_name: tagName,
       }),
     });
     const text = await res.text();
@@ -67,7 +78,8 @@ async function sendFlowToSubscriber(subscriberId, flowNs, apiKey) {
  *
  * Disparado pela Vercel Cron 1x/dia. Varre todos os alunos no KV, identifica
  * follow-ups vencidos (status=pendente, dueDate<=hoje, ainda não disparados,
- * com subscriberId), e dispara cada um pro flow do ManyChat.
+ * com subscriberId), e aplica a tag MANYCHAT_TRIGGER_TAG pra cada subscriber
+ * — o ManyChat detecta a tag e dispara a automação que envia o WhatsApp.
  *
  * AUTENTICAÇÃO: header `Authorization: Bearer <CRON_SECRET>` OU query param
  * `?secret=<CRON_SECRET>`. Vercel Cron usa o header automaticamente.
@@ -93,16 +105,16 @@ export async function GET(req) {
   }
 
   const apiKey = process.env.MANYCHAT_API_KEY;
-  const flowNs = process.env.MANYCHAT_FLOW_NS;
+  const triggerTag = process.env.MANYCHAT_TRIGGER_TAG;
   const dryRun = url.searchParams.get("dryRun") === "1";
 
-  if (!apiKey || !flowNs) {
+  if (!apiKey || !triggerTag) {
     return NextResponse.json(
       {
         ok: false,
-        error: "MANYCHAT_API_KEY e MANYCHAT_FLOW_NS precisam estar setadas",
+        error: "MANYCHAT_API_KEY e MANYCHAT_TRIGGER_TAG precisam estar setadas",
         hasApiKey: !!apiKey,
-        hasFlowNs: !!flowNs,
+        hasTriggerTag: !!triggerTag,
       },
       { status: 500 }
     );
@@ -153,7 +165,7 @@ export async function GET(req) {
         continue;
       }
 
-      const r = await sendFlowToSubscriber(student.subscriberId, flowNs, apiKey);
+      const r = await applyTagToSubscriber(student.subscriberId, triggerTag, apiKey);
 
       if (r.ok && r.body?.status !== "error") {
         await markFollowUpFired(student.phone, fu.tag, today);
