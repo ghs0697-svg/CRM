@@ -22,8 +22,21 @@ const tagDays = (tag) => {
   return m ? parseInt(m[0], 10) : NaN;
 };
 
+// Parseia uma data ISO YYYY-MM-DD como LOCAL (não UTC).
+// Sem isso, "2026-05-07" vira UTC midnight → no fuso BR (UTC-3) volta pra
+// 2026-05-06T21:00 e .toLocaleDateString mostra dia errado.
+const parseLocalDate = (isoYmd) => {
+  if (!isoYmd) return new Date(NaN);
+  const m = String(isoYmd).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return new Date(isoYmd);
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+};
+
+// Formata data ISO YYYY-MM-DD como pt-BR DD/MM/YYYY (sem timezone bug).
+const formatLocalDate = (isoYmd) => parseLocalDate(isoYmd).toLocaleDateString("pt-BR");
+
 const getDueDate = (assignmentDate, tag) => {
-  const d = new Date(assignmentDate);
+  const d = parseLocalDate(assignmentDate);
   d.setDate(d.getDate() + tagDays(tag));
   d.setHours(0, 0, 0, 0);
   return d;
@@ -638,7 +651,7 @@ export default function Home() {
                             <line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line>
                             <line x1="3" y1="10" x2="21" y2="10"></line>
                           </svg>
-                          Incluído: {new Date(student.assignmentDate).toLocaleDateString("pt-BR")}
+                          Incluído: {formatLocalDate(student.assignmentDate)}
                         </span>
                         <span className={styles.cardDate} title="Data de expiração do follow-up">
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -737,7 +750,7 @@ export default function Home() {
                             {studentHistory.slice(0, 5).map((h, idx) => (
                               <div key={idx} className={styles.historyItem}>
                                 <strong>{h.tag}</strong> · {h.outcome} ·{" "}
-                                {new Date(h.date).toLocaleDateString("pt-BR")}
+                                {formatLocalDate(h.date)}
                               </div>
                             ))}
                           </div>
@@ -920,13 +933,13 @@ export default function Home() {
                                   <line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line>
                                   <line x1="3" y1="10" x2="21" y2="10"></line>
                                 </svg>
-                                Incluído: {new Date(student.assignmentDate).toLocaleDateString("pt-BR")}
+                                Incluído: {formatLocalDate(student.assignmentDate)}
                               </span>
                               <span className={styles.cardDate}>
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                   <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>
                                 </svg>
-                                Vence: {new Date(getDueDate(student.assignmentDate, fu.tag)).toLocaleDateString("pt-BR")}
+                                Vence: {getDueDate(student.assignmentDate, fu.tag).toLocaleDateString("pt-BR")}
                               </span>
                             </div>
                             {student.observations && (
