@@ -15,7 +15,12 @@ const getPastDate = (days) => {
   return d.toISOString().split("T")[0];
 };
 
-const tagDays = (tag) => parseInt(tag.split(" ")[0], 10);
+// Extrai dias da tag string. Aceita "N dias", "N dia" e "Hoje" (= 0).
+const tagDays = (tag) => {
+  if (typeof tag === "string" && tag.toLowerCase().trim() === "hoje") return 0;
+  const m = String(tag || "").match(/-?\d+/);
+  return m ? parseInt(m[0], 10) : NaN;
+};
 
 const getDueDate = (assignmentDate, tag) => {
   const d = new Date(assignmentDate);
@@ -286,8 +291,8 @@ export default function Home() {
   const handleAddStudent = (e) => {
     e.preventDefault();
     const days = parseInt(newStudent.days, 10);
-    if (!Number.isFinite(days) || days < 1 || days > 365) return;
-    const tag = `${days} ${days === 1 ? "dia" : "dias"}`;
+    if (!Number.isFinite(days) || days < 0 || days > 365) return;
+    const tag = days === 0 ? "Hoje" : `${days} ${days === 1 ? "dia" : "dias"}`;
     const today = startOfToday().toISOString().split("T")[0];
     setStudents((prev) => [
       {
@@ -296,7 +301,7 @@ export default function Home() {
         phone: onlyDigits(newStudent.phone),
         assignmentDate: today,
         observations: newStudent.observations,
-        followUps: [{ tag, status: "pendente", outcome: null, calledAt: null, firedAt: null }],
+        followUps: [{ tag, status: "pendente", outcome: null, calledAt: null }],
       },
       ...prev,
     ]);
@@ -647,12 +652,6 @@ export default function Home() {
                         <div className={styles.cardObs}>{student.observations}</div>
                       )}
 
-                      {fu.firedAt && (
-                        <div className={styles.firedBadge} title="Mensagem automática enviada via ManyChat">
-                          📤 Mensagem enviada em {new Date(fu.firedAt).toLocaleDateString("pt-BR")}
-                        </div>
-                      )}
-
                       {isDone && fu.outcome && (
                         <div className={styles.outcomeBadge}>
                           ✓ {fu.outcome}
@@ -806,10 +805,10 @@ export default function Home() {
                 <label>Daqui a quantos dias chamar?</label>
                 <input
                   type="number"
-                  min="1"
+                  min="0"
                   max="365"
                   className={styles.input}
-                  placeholder="Ex: 7"
+                  placeholder="Ex: 7 (use 0 pra disparar hoje)"
                   value={newStudent.days}
                   onChange={(e) => setNewStudent({ ...newStudent, days: e.target.value })}
                   required
@@ -831,7 +830,7 @@ export default function Home() {
                 className={styles.submitBtn}
                 disabled={(() => {
                   const d = parseInt(newStudent.days, 10);
-                  return !Number.isFinite(d) || d < 1 || d > 365;
+                  return !Number.isFinite(d) || d < 0 || d > 365;
                 })()}
               >
                 Salvar Aluno

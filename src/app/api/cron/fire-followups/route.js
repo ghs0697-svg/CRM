@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStudents, markFollowUpFired } from "@/lib/db";
+import { getStudents, deleteStudentByPhone } from "@/lib/db";
 
 // Roda como cron na Vercel — precisa runtime Node, não Edge.
 export const runtime = "nodejs";
@@ -17,10 +17,12 @@ export const dynamic = "force-dynamic";
 const MANYCHAT_ADD_TAG_URL = "https://api.manychat.com/fb/subscriber/addTagByName";
 
 /**
- * Helper: dado uma string de tag tipo "7 dias" ou "1 dia", retorna o número.
+ * Helper: dado uma string de tag tipo "7 dias", "1 dia" ou "Hoje", retorna
+ * o número de dias. "Hoje" → 0.
  */
 function tagDays(tag) {
-  const m = String(tag || "").match(/\d+/);
+  if (typeof tag === "string" && tag.toLowerCase().trim() === "hoje") return 0;
+  const m = String(tag || "").match(/-?\d+/);
   return m ? parseInt(m[0], 10) : NaN;
 }
 
@@ -77,14 +79,18 @@ async function applyTagToSubscriber(subscriberId, tagName, apiKey) {
  * GET /api/cron/fire-followups
  *
  * Disparado pela Vercel Cron 1x/dia. Varre todos os alunos no KV, identifica
- * follow-ups vencidos (status=pendente, dueDate<=hoje, ainda não disparados,
- * com subscriberId), e aplica a tag MANYCHAT_TRIGGER_TAG pra cada subscriber
- * — o ManyChat detecta a tag e dispara a automação que envia o WhatsApp.
+ * follow-ups vencidos (status=pendente, dueDate<=hoje, com subscriberId),
+ * e aplica a tag MANYCHAT_TRIGGER_TAG pra cada subscriber — o ManyChat
+ * detecta a tag e dispara a automação que envia o WhatsApp.
+ *
+ * Após disparo bem-sucedido, o lead é APAGADO do CRM. Lógica: lead no CRM
+ * = quem ainda precisa ser chamado. Recebeu msg automática = follow foi
+ * dado = sai do CRM. Vendedor pode reincluir aplicando tag CRM de novo.
  *
  * AUTENTICAÇÃO: header `Authorization: Bearer <CRON_SECRET>` OU query param
  * `?secret=<CRON_SECRET>`. Vercel Cron usa o header automaticamente.
  *
- * Resposta: { ok, scanned, eligible, fired, skipped, errors }
+ * Resposta: { ok, scanned, eligible, fired, deleted, skipped, errors }
  */
 export async function GET(req) {
   // Auth: Vercel Cron manda header Authorization: Bearer ${CRON_SECRET}
@@ -126,9 +132,14 @@ export async function GET(req) {
     scanned: 0,
     eligible: 0,
     fired: 0,
-    skipped: { noSubscriber: 0, alreadyFired: 0, notDue: 0, notPending: 0 },
+    deleted: 0,
+    skipped: { noSubscriber: 0, notDue: 0, notPending: 0 },
     errors: [],
   };
+
+  // Coleta phones a apagar depois (não apaga durante o loop pra não
+  // comprometer iteração).
+  const phonesToDelete = new Set();
 
   for (const student of students) {
     for (const fu of student.followUps || []) {
@@ -136,10 +147,6 @@ export async function GET(req) {
 
       if (fu.status !== "pendente") {
         results.skipped.notPending++;
-        continue;
-      }
-      if (fu.firedAt) {
-        results.skipped.alreadyFired++;
         continue;
       }
       const due = dueDateFor(student, fu);
@@ -161,15 +168,15 @@ export async function GET(req) {
       results.eligible++;
 
       if (dryRun) {
-        // Modo de simulação — não chama ManyChat nem grava firedAt.
+        // Modo de simulação — não chama ManyChat nem apaga lead.
         continue;
       }
 
       const r = await applyTagToSubscriber(student.subscriberId, triggerTag, apiKey);
 
       if (r.ok && r.body?.status !== "error") {
-        await markFollowUpFired(student.phone, fu.tag, today);
         results.fired++;
+        phonesToDelete.add(student.phone);
       } else {
         results.errors.push({
           phone: student.phone,
@@ -181,6 +188,14 @@ export async function GET(req) {
         });
       }
     }
+  }
+
+  // Apaga leads disparados com sucesso. Se um aluno tem múltiplos follow-ups
+  // pendentes (raro), apaga o aluno inteiro — todos os pendentes considerados
+  // "concluídos" pelo disparo da msg automática.
+  for (const phone of phonesToDelete) {
+    const removed = await deleteStudentByPhone(phone);
+    if (removed > 0) results.deleted += removed;
   }
 
   console.log("[cron/fire-followups]", JSON.stringify(results));
