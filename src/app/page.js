@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from "react";
 import styles from "./page.module.css";
 
-const TAGS = ["3 dias", "7 dias", "15 dias", "30 dias"];
 const OUTCOMES = ["Atendeu", "Não atendeu", "Comprou", "Não interessado", "Remarcar"];
 
 const STORAGE_KEY = "crm-students-v2";
@@ -57,12 +56,18 @@ const formatPhone = (phone) => {
 const getInitials = (name) =>
   name.split(" ").map((n) => n[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
+// Bucketiza as cores existentes (vermelho/amarelo/laranja/verde) por urgência.
+// Funciona pra qualquer número de dias, não só os 4 canônicos.
+//   1-3 dias:   vermelho (alta urgência)
+//   4-7 dias:   amarelo
+//   8-15 dias:  laranja
+//   16+ dias:   verde (calmo)
 const getTagClass = (tag) => {
-  if (tag.includes("3 dias")) return styles.tag3d;
-  if (tag.includes("7 dias")) return styles.tag7d;
-  if (tag.includes("15 dias")) return styles.tag15d;
-  if (tag.includes("30 dias")) return styles.tag30d;
-  return "";
+  const days = tagDays(tag);
+  if (!Number.isFinite(days) || days <= 3) return styles.tag3d;
+  if (days <= 7) return styles.tag7d;
+  if (days <= 15) return styles.tag15d;
+  return styles.tag30d;
 };
 
 
@@ -78,7 +83,7 @@ export default function Home() {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newStudent, setNewStudent] = useState({
-    name: "", phone: "", tags: ["3 dias"], observations: "",
+    name: "", phone: "", days: "7", observations: "",
   });
 
   const [callModal, setCallModal] = useState(null);
@@ -280,7 +285,9 @@ export default function Home() {
 
   const handleAddStudent = (e) => {
     e.preventDefault();
-    if (!newStudent.tags.length) return;
+    const days = parseInt(newStudent.days, 10);
+    if (!Number.isFinite(days) || days < 1 || days > 365) return;
+    const tag = `${days} ${days === 1 ? "dia" : "dias"}`;
     const today = startOfToday().toISOString().split("T")[0];
     setStudents((prev) => [
       {
@@ -289,25 +296,19 @@ export default function Home() {
         phone: onlyDigits(newStudent.phone),
         assignmentDate: today,
         observations: newStudent.observations,
-        followUps: newStudent.tags.map((tag) => ({
-          tag, status: "pendente", outcome: null, calledAt: null,
-        })),
+        followUps: [{ tag, status: "pendente", outcome: null, calledAt: null }],
       },
       ...prev,
     ]);
     setIsAddOpen(false);
-    setNewStudent({ name: "", phone: "", tags: ["3 dias"], observations: "" });
-  };
-
-  const toggleTagInNew = (tag) => {
-    setNewStudent((s) => ({
-      ...s,
-      tags: s.tags.includes(tag) ? s.tags.filter((t) => t !== tag) : [...s.tags, tag],
-    }));
+    setNewStudent({ name: "", phone: "", days: "7", observations: "" });
   };
 
   const saveEdit = (e) => {
     e.preventDefault();
+    // Edição só altera dados do contato (nome/phone/obs). Pra mudar quantos
+    // dias de follow-up, apaga o aluno e cria de novo (ou re-aplica tag no
+    // ManyChat com o novo Follow).
     setStudents((prev) =>
       prev.map((s) =>
         s.id === editModal.id
@@ -316,10 +317,6 @@ export default function Home() {
               name: editModal.name,
               phone: onlyDigits(editModal.phone),
               observations: editModal.observations,
-              followUps: editModal.tags.map((tag) => {
-                const existing = s.followUps.find((f) => f.tag === tag);
-                return existing || { tag, status: "pendente", outcome: null, calledAt: null };
-              }),
             }
           : s,
       ),
@@ -344,19 +341,44 @@ export default function Home() {
     setEditModal(null);
   };
 
+  // Tags presentes nos dados (independente de filtro de busca/tag).
+  // Usado pelos filter pills no topo — só mostra "5 dias" se algum lead tem.
+  const presentTags = useMemo(() => {
+    const set = new Set();
+    for (const s of students) {
+      for (const fu of s.followUps || []) {
+        set.add(fu.tag);
+      }
+    }
+    return Array.from(set).sort((a, b) => tagDays(a) - tagDays(b));
+  }, [students]);
+
+  // Reset tagFilter se a tag selecionada sumir dos dados (ex: último lead
+  // daquele bucket foi apagado/chamado).
+  useEffect(() => {
+    if (tagFilter !== "Todos" && !presentTags.includes(tagFilter)) {
+      setTagFilter("Todos");
+    }
+  }, [presentTags, tagFilter]);
+
   const groupedByTag = useMemo(() => {
     const groups = {};
-    for (const tag of TAGS) groups[tag] = [];
     for (const item of followUpItems) {
-      groups[item.fu.tag]?.push(item);
+      if (!groups[item.fu.tag]) groups[item.fu.tag] = [];
+      groups[item.fu.tag].push(item);
     }
-    for (const tag of TAGS) {
+    for (const tag in groups) {
       groups[tag].sort((a, b) => a.diff - b.diff);
     }
     return groups;
   }, [followUpItems]);
 
-  const visibleColumns = TAGS.filter((t) => tagFilter === "Todos" || tagFilter === t);
+  // Colunas a renderizar: tags presentes nos itens já filtrados (search +
+  // tagFilter + statusFilter aplicados). Sorted ascending por dias.
+  const visibleColumns = useMemo(() => {
+    const tags = Object.keys(groupedByTag).filter((t) => groupedByTag[t].length > 0);
+    return tags.sort((a, b) => tagDays(a) - tagDays(b));
+  }, [groupedByTag]);
 
   if (!hydrated) {
     return <div className={styles.container} />;
@@ -496,7 +518,7 @@ export default function Home() {
 
         <div className={styles.filters}>
           <div className={styles.filterGroup}>
-            {["Todos", ...TAGS].map((f) => (
+            {["Todos", ...presentTags].map((f) => (
               <button
                 key={f}
                 className={`${styles.filterBtn} ${tagFilter === f ? styles.active : ""}`}
@@ -775,18 +797,17 @@ export default function Home() {
               </div>
 
               <div className={styles.formGroup}>
-                <label>Tags (uma ou mais)</label>
-                <div className={styles.checkboxGrid}>
-                  {TAGS.map((t) => {
-                    const checked = newStudent.tags.includes(t);
-                    return (
-                      <label key={t} className={`${styles.checkboxLabel} ${checked ? styles.checked : ""}`}>
-                        <input type="checkbox" checked={checked} onChange={() => toggleTagInNew(t)} />
-                        {t}
-                      </label>
-                    );
-                  })}
-                </div>
+                <label>Daqui a quantos dias chamar?</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  className={styles.input}
+                  placeholder="Ex: 7"
+                  value={newStudent.days}
+                  onChange={(e) => setNewStudent({ ...newStudent, days: e.target.value })}
+                  required
+                />
               </div>
 
               <div className={styles.formGroup}>
@@ -799,7 +820,14 @@ export default function Home() {
                 />
               </div>
 
-              <button type="submit" className={styles.submitBtn} disabled={!newStudent.tags.length}>
+              <button
+                type="submit"
+                className={styles.submitBtn}
+                disabled={(() => {
+                  const d = parseInt(newStudent.days, 10);
+                  return !Number.isFinite(d) || d < 1 || d > 365;
+                })()}
+              >
                 Salvar Aluno
               </button>
             </form>
@@ -963,30 +991,6 @@ export default function Home() {
               </div>
 
               <div className={styles.formGroup}>
-                <label>Tags</label>
-                <div className={styles.checkboxGrid}>
-                  {TAGS.map((t) => {
-                    const checked = editModal.tags.includes(t);
-                    return (
-                      <label key={t} className={`${styles.checkboxLabel} ${checked ? styles.checked : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() =>
-                            setEditModal({
-                              ...editModal,
-                              tags: checked ? editModal.tags.filter((x) => x !== t) : [...editModal.tags, t],
-                            })
-                          }
-                        />
-                        {t}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className={styles.formGroup}>
                 <label>Observações</label>
                 <textarea
                   className={styles.textarea}
@@ -995,7 +999,7 @@ export default function Home() {
                 />
               </div>
 
-              <button type="submit" className={styles.submitBtn} disabled={!editModal.tags.length}>
+              <button type="submit" className={styles.submitBtn}>
                 Salvar Alterações
               </button>
               <button
