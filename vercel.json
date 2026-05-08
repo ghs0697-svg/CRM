@@ -3,10 +3,6 @@
     {
       "path": "/api/cron/fire-followups",
       "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/push/send-water",
-      "schedule": "0 * * * *"
     }
   ]
 }
