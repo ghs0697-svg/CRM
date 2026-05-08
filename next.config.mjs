@@ -4,3 +4,4 @@ const nextConfig = {
 };
 
 export default nextConfig;
+// Vercel deploy trigger 1778198603
