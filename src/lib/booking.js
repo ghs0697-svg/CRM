@@ -69,9 +69,9 @@ const DEFAULT_PROFESSIONALS = [
     photo: "/img/bruna.jpg",
     active: true,
     plans: [
-      { id: "1x", sessions: 1, value: 100, perSession: 100, label: "1 sessão",  greennLink: "" },
-      { id: "2x", sessions: 2, value: 180, perSession: 90,  label: "2 sessões", greennLink: "", discountLabel: "-10%" },
-      { id: "4x", sessions: 4, value: 320, perSession: 80,  label: "4 sessões", greennLink: "", discountLabel: "-20%" },
+      { id: "1x", sessions: 1, value: 100, perSession: 100, label: "1 sessão",  greennLink: "https://payfast.greenn.com.br/t6d49r2/offer/ZVMjI9" },
+      { id: "2x", sessions: 2, value: 180, perSession: 90,  label: "2 sessões", greennLink: "https://payfast.greenn.com.br/t6d49r2/offer/19NchO", discountLabel: "-10%" },
+      { id: "4x", sessions: 4, value: 320, perSession: 80,  label: "4 sessões", greennLink: "https://payfast.greenn.com.br/t6d49r2/offer/FhNZ6f", discountLabel: "-20%" },
     ],
   },
 ];
