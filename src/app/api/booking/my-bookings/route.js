@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getReservationsByPhone, getCredits, getProfessionals } from "@/lib/booking";
+import {
+  getReservationsByPhone,
+  getCreditsDetail,
+  getProfessionals,
+} from "@/lib/booking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,13 +11,18 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/booking/my-bookings?phone=<phone>&upcoming=1
  *
- * Aluno vê os próprios agendamentos. Retorna também saldo de créditos
- * por profissional.
- *
- * `upcoming=1` filtra apenas agendamentos futuros e não-cancelados.
+ * Aluno vê os próprios agendamentos + saldo de créditos por profissional.
+ * `upcoming=1` filtra apenas agendamentos futuros não-cancelados.
  *
  * Resposta:
- *   { ok: true, reservations: [...], credits: { vitor: 2, bruna: 0 } }
+ *   {
+ *     ok: true,
+ *     reservations: [...],
+ *     credits: {
+ *       vitor: { remaining: 2, expiresAt: "2026-07-08" },
+ *       bruna: { remaining: 0, expiresAt: null }
+ *     }
+ *   }
  */
 export async function GET(req) {
   const url = new URL(req.url);
@@ -29,11 +38,10 @@ export async function GET(req) {
 
   const reservations = await getReservationsByPhone(phone, { upcomingOnly });
 
-  // Saldo de créditos por profissional ativo
   const pros = getProfessionals();
   const credits = {};
   for (const p of pros) {
-    credits[p.id] = await getCredits(phone, p.id);
+    credits[p.id] = await getCreditsDetail(phone, p.id);
   }
 
   return NextResponse.json({ ok: true, reservations, credits });

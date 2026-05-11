@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createReservation, getProfessional } from "@/lib/booking";
+import { createReservation, getProfessional, getPlan } from "@/lib/booking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,18 +12,18 @@ export const dynamic = "force-dynamic";
  *     professionalId: "vitor",
  *     slotDate: "2026-05-12",
  *     slotId: "slot_xxx",
- *     plan: "avulso" | "pacote" | "credit",  // credit = usa crédito de pacote
+ *     planId: "1x" | "2x" | "4x" | "8x" | "credit",
  *     studentName: "...",
  *     studentPhone: "5555...",
- *     studentSubscriberId: "...",  // opcional (ManyChat)
- *     message: "..."  // opcional, contexto pra o profissional
+ *     studentSubscriberId: "...",   // opcional (ManyChat)
+ *     message: "..."                // opcional, contexto pra o profissional
  *   }
  *
  * Resposta sucesso:
  *   { ok: true, reservationId, paymentLink, externalRef, expiresAt, isCreditPayment }
  *
- *   - Se isCreditPayment=true → reserva já confirmada (pagou com crédito), não tem paymentLink
- *   - Se false → aluno é redirecionado pra paymentLink (Greenn) e tem 15min pra pagar
+ *   - planId="credit" → reserva já confirmada (pagou com crédito), sem paymentLink
+ *   - outros plans  → aluno é redirecionado pra paymentLink (Greenn), 15min pra pagar
  */
 export async function POST(req) {
   let body;
@@ -40,7 +40,7 @@ export async function POST(req) {
     professionalId,
     slotDate,
     slotId,
-    plan,
+    planId,
     studentName,
     studentPhone,
     studentSubscriberId,
@@ -48,19 +48,12 @@ export async function POST(req) {
   } = body;
 
   // Validações básicas
-  if (!professionalId || !slotDate || !slotId || !plan) {
+  if (!professionalId || !slotDate || !slotId || !planId) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "professionalId, slotDate, slotId e plan são obrigatórios",
+        error: "professionalId, slotDate, slotId e planId são obrigatórios",
       },
-      { status: 400 }
-    );
-  }
-  if (!["avulso", "pacote", "credit"].includes(plan)) {
-    return NextResponse.json(
-      { ok: false, error: "plan deve ser avulso, pacote ou credit" },
       { status: 400 }
     );
   }
@@ -79,17 +72,24 @@ export async function POST(req) {
     );
   }
 
-  // Se for plan avulso/pacote, o profissional precisa ter link Greenn configurado
-  if (plan !== "credit") {
-    const greennLink =
-      plan === "pacote"
-        ? prof.pricing.pacote4.greennLink
-        : prof.pricing.avulso.greennLink;
-    if (!greennLink) {
+  // Se não for credit, valida que plano existe
+  if (planId !== "credit") {
+    const plan = getPlan(professionalId, planId);
+    if (!plan) {
       return NextResponse.json(
         {
           ok: false,
-          error: `Greenn ainda não configurado pro plano ${plan} de ${prof.name}. Avise o admin.`,
+          error: `plano ${planId} não existe pra ${prof.name}`,
+          availablePlans: prof.plans.map((p) => p.id),
+        },
+        { status: 400 }
+      );
+    }
+    if (!plan.greennLink) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Greenn ainda não configurado pro plano ${planId} de ${prof.name}. Avise o admin.`,
         },
         { status: 503 }
       );
@@ -100,12 +100,11 @@ export async function POST(req) {
     professionalId,
     slotDate,
     slotId,
-    plan,
+    planId,
     studentName,
     studentPhone,
     studentSubscriberId,
     message,
-    useCredit: plan === "credit",
   });
 
   if (!result.ok) {

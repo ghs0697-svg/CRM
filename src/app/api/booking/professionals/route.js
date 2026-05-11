@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
-import { getProfessionals, getCredits } from "@/lib/booking";
+import { getProfessionals, getCreditsDetail } from "@/lib/booking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/booking/professionals
+ * GET /api/booking/professionals?phone=<phone>
  *
- * Lista profissionais ativos com info pública (nome, spec, bio, preços, foto).
- * Se passar ?phone=X, inclui saldo de créditos do aluno por profissional.
+ * Lista profissionais ativos com info pública (nome, spec, bio, planos, foto).
+ * Se passar ?phone=X, inclui saldo + expiração de créditos por profissional.
+ *
+ * Não retorna o link Greenn na lista pública (só na hora de reservar via
+ * endpoint /reserve, depois de confirmar plano + slot).
  *
  * Resposta: { ok: true, professionals: [...] }
  */
@@ -17,8 +20,6 @@ export async function GET(req) {
   const phone = url.searchParams.get("phone");
   const list = getProfessionals();
 
-  // Não retorna o link Greenn na lista pública (só na hora de reservar).
-  // Se tem phone, anexa saldo de créditos pra UI mostrar "tu tem 2 créditos".
   const sanitized = await Promise.all(
     list.map(async (p) => {
       const out = {
@@ -29,21 +30,18 @@ export async function GET(req) {
         durationMin: p.durationMin,
         weeklySlots: p.weeklySlots,
         photo: p.photo,
-        pricing: {
-          avulso: {
-            value: p.pricing.avulso.value,
-            label: p.pricing.avulso.label,
-          },
-          pacote4: {
-            value: p.pricing.pacote4.value,
-            label: p.pricing.pacote4.label,
-            credits: p.pricing.pacote4.credits,
-            discountLabel: p.pricing.pacote4.discountLabel,
-          },
-        },
+        plans: p.plans.map((plan) => ({
+          id: plan.id,
+          sessions: plan.sessions,
+          value: plan.value,
+          perSession: plan.perSession,
+          label: plan.label,
+          discountLabel: plan.discountLabel || null,
+          available: !!plan.greennLink, // true se já tem Greenn configurado
+        })),
       };
       if (phone) {
-        out.credits = await getCredits(phone, p.id);
+        out.credits = await getCreditsDetail(phone, p.id);
       }
       return out;
     })

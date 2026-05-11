@@ -9,12 +9,13 @@
  *
  *   booking:reservation:<reservationId>
  *     → { reservationId, professionalId, slotDate, slotId, slotStart, slotEnd,
- *         plan: 'avulso'|'pacote', studentName, studentPhone, studentSubscriberId,
- *         message, paymentStatus, paymentLinkGreenn, externalRef,
- *         createdAt, expiresAt, confirmedAt?, canceledAt?, refundedAt? }
+ *         planId, planSessions, planValue, studentName, studentPhone,
+ *         studentSubscriberId, message, paymentStatus, paymentLinkGreenn,
+ *         externalRef, createdAt, expiresAt, confirmedAt?, canceledAt?,
+ *         refundedAt? }
  *
  *   booking:credits:<phone>:<profId>
- *     → { remaining: <number> } — créditos disponíveis do pacote 4×
+ *     → { remaining: <number>, expiresAt: <ISO> } — créditos do pacote
  *
  *   booking:reservations-by-phone:<phone>
  *     → array de reservationIds (índice pra listar agendamentos do aluno)
@@ -22,15 +23,25 @@
  * Privacidade: aluno só vê slots como `available` ou `taken` — nunca vê quem
  * reservou. Endpoints admin (com BOOKING_ADMIN_SECRET) retornam dados completos
  * incluindo nome do aluno.
+ *
+ * Planos: cada profissional define uma lista de planos. Plano com sessions=1
+ * é avulso; sessions>1 é pacote (gera créditos extras = sessions - 1).
  */
 
 import { kv as kvLib } from "@vercel/kv";
 
 const useKV = !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 
+// Validade de créditos do pacote (em dias) — configurável via env.
+// Default 60 dias: aluno tem 2 meses pra usar tudo, depois perde.
+const CREDIT_VALIDITY_DAYS = parseInt(process.env.BOOKING_CREDIT_VALIDITY_DAYS || "60", 10);
+
 // ── Config dos profissionais ──────────────────────────────────────────────
+// Cada profissional tem array `plans`. Plano id é único dentro do profissional
+// (ex: "1x", "2x", "4x", "8x"). Plano com sessions=1 é a aula avulsa.
+//
+// greennLink fica vazio até o link de checkout ser criado e plugado.
 // Editável via env var BOOKING_PROFESSIONALS (JSON) ou usa default abaixo.
-// Greenn links ficam vazios até GH criar os produtos e me passar.
 const DEFAULT_PROFESSIONALS = [
   {
     id: "vitor",
@@ -38,19 +49,15 @@ const DEFAULT_PROFESSIONALS = [
     spec: "Personal Trainer · CREF",
     bio: "Especialista em biomecânica e hipertrofia. Treina alunos do Método GH desde a fundação. Aulas 1-on-1 pra travar técnica, destravar plateau e adaptar pra dor/lesão.",
     durationMin: 45,
-    pricing: {
-      avulso: { value: 50, label: "Aula avulsa", greennLink: "" },
-      pacote4: {
-        value: 150,
-        label: "Pacote 4 aulas",
-        credits: 4,
-        greennLink: "",
-        discountLabel: "-25%",
-      },
-    },
     weeklySlots: 4,
     photo: "/img/vitor.jpg",
     active: true,
+    plans: [
+      { id: "1x", sessions: 1, value: 50,  perSession: 50, label: "1 aula",     greennLink: "https://payfast.greenn.com.br/hvbk685/offer/VU5uQA" },
+      { id: "2x", sessions: 2, value: 90,  perSession: 45, label: "2 aulas",    greennLink: "https://payfast.greenn.com.br/hvbk685/offer/DNjnsr", discountLabel: "-10%" },
+      { id: "4x", sessions: 4, value: 160, perSession: 40, label: "4 aulas",    greennLink: "https://payfast.greenn.com.br/hvbk685/offer/dFIy7C", discountLabel: "-20%" },
+      { id: "8x", sessions: 8, value: 280, perSession: 35, label: "8 aulas",    greennLink: "https://payfast.greenn.com.br/hvbk685/offer/lrOeSw", discountLabel: "-30%" },
+    ],
   },
   {
     id: "bruna",
@@ -58,19 +65,14 @@ const DEFAULT_PROFESSIONALS = [
     spec: "Psicóloga · CRP · Performance",
     bio: "Atende alunos do Método GH em sessões breves focadas em ansiedade alimentar, controle emocional no corte/bulk, motivação e relação saudável com o treino. Abordagem direta, sem enrolação.",
     durationMin: 30,
-    pricing: {
-      avulso: { value: 80, label: "Sessão avulsa", greennLink: "" },
-      pacote4: {
-        value: 300,
-        label: "Pacote 4 sessões",
-        credits: 4,
-        greennLink: "",
-        discountLabel: "-6%",
-      },
-    },
     weeklySlots: 8,
     photo: "/img/bruna.jpg",
     active: true,
+    plans: [
+      { id: "1x", sessions: 1, value: 100, perSession: 100, label: "1 sessão",  greennLink: "" },
+      { id: "2x", sessions: 2, value: 180, perSession: 90,  label: "2 sessões", greennLink: "", discountLabel: "-10%" },
+      { id: "4x", sessions: 4, value: 320, perSession: 80,  label: "4 sessões", greennLink: "", discountLabel: "-20%" },
+    ],
   },
 ];
 
@@ -89,6 +91,16 @@ export function getProfessionals({ includeInactive = false } = {}) {
 
 export function getProfessional(profId) {
   return getProfessionals({ includeInactive: true }).find((p) => p.id === profId);
+}
+
+/**
+ * Retorna config de um plano específico de um profissional.
+ * Ex: getPlan('vitor', '4x') → { id, sessions, value, perSession, ... }
+ */
+export function getPlan(profId, planId) {
+  const prof = getProfessional(profId);
+  if (!prof) return null;
+  return prof.plans.find((p) => p.id === planId) || null;
 }
 
 // ── Helpers internos ──────────────────────────────────────────────────────
@@ -242,12 +254,11 @@ export async function createReservation({
   professionalId,
   slotDate,
   slotId,
-  plan, // 'avulso' | 'pacote'
+  planId, // ex: "1x" / "2x" / "4x" / "8x" / "credit"
   studentName,
   studentPhone,
   studentSubscriberId,
   message,
-  useCredit = false, // se true, não gera link de pagamento (paga com crédito de pacote)
 }) {
   const prof = getProfessional(professionalId);
   if (!prof) return { ok: false, error: "profissional não encontrado" };
@@ -260,21 +271,33 @@ export async function createReservation({
     return { ok: false, error: "slot indisponível" };
   }
 
-  // Se é pacote ou avulso, mas usando crédito? Verifica saldo.
-  let isCreditPayment = false;
-  if (useCredit) {
-    const credits = (await kvGet(`booking:credits:${onlyDigitsPhone(studentPhone)}:${professionalId}`)) || { remaining: 0 };
-    if (credits.remaining <= 0) {
+  const isCreditPayment = planId === "credit";
+
+  // Se for crédito, valida saldo
+  if (isCreditPayment) {
+    const c = await getCredits(studentPhone, professionalId);
+    if (c <= 0) {
       return { ok: false, error: "sem créditos disponíveis com esse profissional" };
     }
-    isCreditPayment = true;
+  }
+
+  // Se for plano pago, valida que existe e tem link
+  let plan = null;
+  if (!isCreditPayment) {
+    plan = getPlan(professionalId, planId);
+    if (!plan) {
+      return { ok: false, error: `plano ${planId} não existe pra ${prof.name}` };
+    }
+    if (!plan.greennLink) {
+      return {
+        ok: false,
+        error: `Greenn ainda não configurado pro plano ${planId} de ${prof.name}`,
+      };
+    }
   }
 
   const reservationId = genId("res");
-  const externalRef = reservationId; // mandamos esse pra Greenn como external_reference
-
-  const planConfig =
-    plan === "pacote" ? prof.pricing.pacote4 : prof.pricing.avulso;
+  const externalRef = reservationId; // mandamos pra Greenn como external_reference
 
   const reservation = {
     reservationId,
@@ -285,14 +308,15 @@ export async function createReservation({
     slotId,
     slotStart: slot.start,
     slotEnd: slot.end,
-    plan: isCreditPayment ? "credit" : plan,
-    planValue: isCreditPayment ? 0 : planConfig.value,
+    planId: isCreditPayment ? "credit" : plan.id,
+    planSessions: isCreditPayment ? 1 : plan.sessions,
+    planValue: isCreditPayment ? 0 : plan.value,
     studentName: String(studentName || "").trim(),
     studentPhone: onlyDigitsPhone(studentPhone),
     studentSubscriberId: studentSubscriberId || null,
     message: String(message || "").trim(),
     paymentStatus: isCreditPayment ? "credit_used" : "pending",
-    paymentLinkGreenn: isCreditPayment ? null : (planConfig.greennLink || null),
+    paymentLinkGreenn: isCreditPayment ? null : plan.greennLink,
     createdAt: nowIso(),
     expiresAt: new Date(Date.now() + RESERVATION_TTL_MIN * 60_000).toISOString(),
     confirmedAt: null,
@@ -300,7 +324,7 @@ export async function createReservation({
     refundedAt: null,
   };
 
-  // Marca slot como pending
+  // Marca slot como pending (ou taken se for crédito — já confirma)
   await updateSlotStatus(professionalId, slotDate, slotId, {
     status: isCreditPayment ? "taken" : "pending",
     reservationId,
@@ -314,10 +338,9 @@ export async function createReservation({
   phoneList.unshift(reservationId);
   await kvSet(phoneIdxKey(studentPhone), phoneList);
 
-  // Se for crédito, debita imediatamente e confirma
+  // Se for crédito, debita e confirma imediatamente
   if (isCreditPayment) {
     await consumeCredit(studentPhone, professionalId);
-    reservation.paymentStatus = "credit_used";
     reservation.confirmedAt = nowIso();
     await kvSet(reservationKey(reservationId), reservation);
   }
@@ -369,13 +392,11 @@ export async function confirmReservation(reservationId, { paymentTransactionId }
     status: "taken",
   });
 
-  // Se for pacote, soma créditos extras (3 — esse 1° já foi consumido pra essa reserva)
-  if (r.plan === "pacote") {
-    const prof = getProfessional(r.professionalId);
-    const extraCredits = (prof?.pricing?.pacote4?.credits || 4) - 1;
-    if (extraCredits > 0) {
-      await addCredits(r.studentPhone, r.professionalId, extraCredits);
-    }
+  // Se o plano comprado tem >1 sessão, soma créditos extras
+  // (essa 1° já foi "consumida" virando a reserva atual; sobram sessions-1)
+  const extraCredits = (r.planSessions || 1) - 1;
+  if (extraCredits > 0) {
+    await addCredits(r.studentPhone, r.professionalId, extraCredits);
   }
 
   return { ok: true, reservation: r };
@@ -434,32 +455,70 @@ export async function cancelReservation(reservationId, { byStudentPhone } = {}) 
   return { ok: true, eligibleForRefund: r.paymentStatus === "paid" };
 }
 
-// ── Créditos (pacote 4×) ──────────────────────────────────────────────────
+// ── Créditos (pacotes multi-sessão) ───────────────────────────────────────
+// Créditos têm validade de CREDIT_VALIDITY_DAYS (default 60). Sempre que
+// addCredits roda, renova a data de expiração da pilha inteira pra
+// 60 dias a partir da última compra. Aluno que comprar pacote novo
+// "reseta" o relógio dos créditos antigos junto.
 const creditsKey = (phone, profId) =>
   `booking:credits:${onlyDigitsPhone(phone)}:${profId}`;
 
+function creditsExpired(creditsObj) {
+  if (!creditsObj || !creditsObj.expiresAt) return false;
+  return new Date(creditsObj.expiresAt) < new Date();
+}
+
 export async function getCredits(phone, profId) {
-  const c = (await kvGet(creditsKey(phone, profId))) || { remaining: 0 };
-  return c.remaining;
+  const c = await kvGet(creditsKey(phone, profId));
+  if (!c) return 0;
+  if (creditsExpired(c)) {
+    // Lazy cleanup — zera créditos vencidos quando ninguém olha
+    await kvDel(creditsKey(phone, profId));
+    return 0;
+  }
+  return c.remaining || 0;
 }
 
 export async function addCredits(phone, profId, amount) {
   const key = creditsKey(phone, profId);
-  const c = (await kvGet(key)) || { remaining: 0 };
-  c.remaining += amount;
-  c.updatedAt = nowIso();
-  await kvSet(key, c);
-  return c.remaining;
+  const existing = (await kvGet(key)) || { remaining: 0 };
+  // Se créditos existentes estavam expirados, ignora o saldo antigo
+  const baseRemaining = creditsExpired(existing) ? 0 : (existing.remaining || 0);
+  const next = {
+    remaining: baseRemaining + amount,
+    updatedAt: nowIso(),
+    expiresAt: new Date(Date.now() + CREDIT_VALIDITY_DAYS * 86_400_000).toISOString(),
+  };
+  await kvSet(key, next);
+  return next.remaining;
 }
 
 export async function consumeCredit(phone, profId) {
   const key = creditsKey(phone, profId);
-  const c = (await kvGet(key)) || { remaining: 0 };
-  if (c.remaining <= 0) return { ok: false, error: "sem créditos" };
+  const c = await kvGet(key);
+  if (!c || creditsExpired(c) || c.remaining <= 0) {
+    return { ok: false, error: "sem créditos" };
+  }
   c.remaining -= 1;
   c.updatedAt = nowIso();
-  await kvSet(key, c);
+  // NÃO renova expiresAt no consumo — só na compra. Aluno tem 60 dias do
+  // dia do pacote pra usar; consumir não estende.
+  if (c.remaining > 0) {
+    await kvSet(key, c);
+  } else {
+    await kvDel(key); // limpa quando acaba
+  }
   return { ok: true, remaining: c.remaining };
+}
+
+/**
+ * Retorna detalhe completo dos créditos (saldo + expiração) pra mostrar
+ * pro aluno na UI.
+ */
+export async function getCreditsDetail(phone, profId) {
+  const c = await kvGet(creditsKey(phone, profId));
+  if (!c || creditsExpired(c)) return { remaining: 0, expiresAt: null };
+  return { remaining: c.remaining || 0, expiresAt: c.expiresAt || null };
 }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────
