@@ -104,8 +104,19 @@ export function getPlan(profId, planId) {
 }
 
 // ── Helpers internos ──────────────────────────────────────────────────────
+// phoneDigits → mantém o telefone COMPLETO, só removendo não-dígitos.
+//   Usado pra armazenar studentPhone na reserva (preserva 55 + DDD).
+// phoneKey → últimos 10 dígitos pra matching/indexação.
+//   Usado nas chaves do KV pra ser tolerante a "+55" vs "55" vs sem DDI.
+function phoneDigits(s) {
+  return String(s || "").replace(/\D/g, "");
+}
+function phoneKey(s) {
+  return phoneDigits(s).slice(-10);
+}
+// Mantém alias antigo pra compat
 function onlyDigitsPhone(s) {
-  return String(s || "").replace(/\D/g, "").slice(-10);
+  return phoneKey(s);
 }
 
 function isoDate(d) {
@@ -312,7 +323,7 @@ export async function createReservation({
     planSessions: isCreditPayment ? 1 : plan.sessions,
     planValue: isCreditPayment ? 0 : plan.value,
     studentName: String(studentName || "").trim(),
-    studentPhone: onlyDigitsPhone(studentPhone),
+    studentPhone: phoneDigits(studentPhone), // preserva 55 + DDD + número
     studentSubscriberId: studentSubscriberId || null,
     message: String(message || "").trim(),
     paymentStatus: isCreditPayment ? "credit_used" : "pending",
