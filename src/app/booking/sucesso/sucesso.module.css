@@ -1,0 +1,277 @@
+/* ──────────────────────────────────────────────────────────────
+   /booking/sucesso — agendamento confirmado
+   ────────────────────────────────────────────────────────────── */
+
+.successHero {
+  text-align: center;
+  margin-bottom: 24px;
+  padding: 24px 8px 8px;
+}
+.checkBig {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #22c55e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  font-weight: 800;
+  color: white;
+  box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.15);
+  animation: pop 0.3s ease-out;
+}
+@keyframes pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.title {
+  color: #f5f5f5;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  text-align: center;
+}
+.sub {
+  color: #aaa;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  margin: 0 8px;
+}
+
+.card {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.12), rgba(212, 175, 55, 0.03));
+  border: 1px solid #D4AF37;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.profRow {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed rgba(212, 175, 55, 0.25);
+}
+.profName {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f5f5f5;
+}
+.profSpec {
+  font-size: 10px;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 0;
+}
+.detailRow + .detailRow {
+  border-top: 1px dashed rgba(212, 175, 55, 0.15);
+}
+.detailLabel {
+  font-size: 11px;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.detailValue {
+  font-size: 13px;
+  color: #f5f5f5;
+  font-weight: 600;
+  text-align: right;
+}
+
+.messageBox {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 3px solid #D4AF37;
+  border-radius: 6px;
+}
+.messageText {
+  font-size: 12px;
+  color: #ccc;
+  line-height: 1.5;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.nextSteps {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.stepRow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+}
+.stepRow + .stepRow {
+  border-top: 1px dashed #2a2a2a;
+}
+.stepIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+}
+.stepTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f5f5f5;
+}
+.stepSub {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.cancelBtn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.cancelBtn:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.cancelConfirm {
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 4px;
+}
+.cancelConfirm p {
+  color: #f5f5f5;
+  font-size: 13px;
+  margin: 0 0 12px;
+  text-align: center;
+}
+.cancelBtnRow {
+  display: flex;
+  gap: 8px;
+}
+.cancelKeepBtn,
+.cancelConfirmBtn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+}
+.cancelKeepBtn {
+  background: #2a2a2a;
+  color: #aaa;
+}
+.cancelConfirmBtn {
+  background: #ef4444;
+  color: white;
+}
+.cancelConfirmBtn:disabled,
+.cancelKeepBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.errorMsg {
+  background: rgba(239, 68, 68, 0.1);
+  border-left: 3px solid #ef4444;
+  color: #fca5a5;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+.successMsg {
+  background: rgba(34, 197, 94, 0.1);
+  border-left: 3px solid #22c55e;
+  color: #86efac;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+
+/* === Estado pending === */
+.pendingState {
+  text-align: center;
+  padding: 50px 24px 24px;
+}
+.spinner {
+  width: 56px;
+  height: 56px;
+  border: 4px solid #2a2a2a;
+  border-top-color: #D4AF37;
+  border-radius: 50%;
+  margin: 0 auto 18px;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* === Estado erro / cancelado === */
+.errorState,
+.canceledState {
+  text-align: center;
+  padding: 50px 24px 24px;
+}
+.errorEmoji,
+.canceledIcon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  font-weight: 800;
+}
+.errorEmoji {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+.canceledIcon {
+  background: rgba(115, 115, 115, 0.15);
+  color: #aaa;
+  border: 2px solid #555;
+}
+.linkBtn {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 12px 24px;
+  background: #D4AF37;
+  color: #1a1a1a;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 13px;
+  text-decoration: none;
+}
+.linkBtn:hover {
+  filter: brightness(1.05);
+}
