@@ -41,17 +41,64 @@ export default function SucessoPage() {
   const [cancelMsg, setCancelMsg] = useState(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
-  // Captura ?ref ou ?id da URL
+  // Modo fallback (sem ref na URL): pede telefone e busca agendamento mais recente
+  const [needPhoneLookup, setNeedPhoneLookup] = useState(false);
+  const [lookupPhone, setLookupPhone] = useState("");
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupError, setLookupError] = useState(null);
+
+  // Captura ?ref ou ?id da URL — se não tiver, entra em modo phone lookup
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const ref = params.get("ref") || params.get("id") || params.get("external_reference");
+    const ref =
+      params.get("ref") ||
+      params.get("id") ||
+      params.get("external_reference") ||
+      params.get("reservationId");
     if (!ref) {
-      setError("ID da reserva não encontrado na URL");
+      // Sem ref → modo fallback (Greenn não suporta placeholder dinâmico)
+      setNeedPhoneLookup(true);
       setLoading(false);
       return;
     }
     setReservationId(ref);
   }, []);
+
+  // Lookup por telefone — busca agendamento mais recente confirmado/pendente
+  const handlePhoneLookup = useCallback(async (e) => {
+    e?.preventDefault?.();
+    const digits = lookupPhone.replace(/\D/g, "");
+    if (digits.length < 10) {
+      setLookupError("Digita o WhatsApp completo (com DDD).");
+      return;
+    }
+    setLookupBusy(true);
+    setLookupError(null);
+    try {
+      const res = await fetch(`/api/booking/my-bookings?phone=${encodeURIComponent(digits)}&upcoming=1`);
+      const data = await res.json();
+      if (!data.ok) {
+        setLookupError(data.error || "Erro ao buscar agendamentos");
+        return;
+      }
+      // Pega o mais recente (createdAt desc) — geralmente o aluno acabou de pagar
+      const list = (data.reservations || []).sort((a, b) =>
+        new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      if (!list.length) {
+        setLookupError("Não achei agendamento ativo nesse WhatsApp. Verifica o número ou aguarda alguns segundos e tenta de novo (pagamento pode estar sendo processado).");
+        return;
+      }
+      const r = list[0];
+      setReservationId(r.reservationId);
+      setNeedPhoneLookup(false);
+      setLoading(true);
+    } catch (err) {
+      setLookupError(String(err));
+    } finally {
+      setLookupBusy(false);
+    }
+  }, [lookupPhone]);
 
   // Carrega dados da reserva
   const loadReservation = useCallback(async () => {
@@ -136,7 +183,41 @@ export default function SucessoPage() {
       <main className={styles.main}>
         {loading && <div className={styles.loading}>Carregando agendamento…</div>}
 
-        {!loading && error && (
+        {needPhoneLookup && (
+          <div className={successStyles.successHero}>
+            <div className={successStyles.checkBig} style={{ background: "#22c55e" }}>✓</div>
+            <h2 className={successStyles.title}>Pagamento processado!</h2>
+            <p className={successStyles.sub} style={{ marginBottom: 20 }}>
+              Pra mostrar os detalhes do teu agendamento, digita o WhatsApp que usaste pra agendar.
+            </p>
+            <form onSubmit={handlePhoneLookup} style={{ padding: "0 8px" }}>
+              <input
+                className={styles.input}
+                type="tel"
+                inputMode="numeric"
+                placeholder="55 11 99999-9999"
+                value={lookupPhone}
+                onChange={(e) => setLookupPhone(e.target.value)}
+                autoFocus
+              />
+              {lookupError && (
+                <div className={successStyles.errorMsg} style={{ marginTop: 12 }}>
+                  {lookupError}
+                </div>
+              )}
+              <button
+                type="submit"
+                className={styles.primaryBtn}
+                style={{ marginTop: 12 }}
+                disabled={lookupBusy}
+              >
+                {lookupBusy ? "Buscando…" : "Ver meu agendamento →"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {!loading && !needPhoneLookup && error && (
           <div className={successStyles.errorState}>
             <div className={successStyles.errorEmoji}>⚠️</div>
             <h2 className={successStyles.title}>Não consegui carregar</h2>
