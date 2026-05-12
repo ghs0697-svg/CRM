@@ -174,6 +174,7 @@ export default function SucessoPage() {
 
   return (
     <div className={styles.container}>
+      <div className={styles.appShell}>
       <header className={styles.header}>
         <div style={{ width: 32 }} />
         <h1 className={styles.headerTitle}>AGENDAMENTO</h1>
@@ -378,6 +379,7 @@ export default function SucessoPage() {
           </>
         )}
       </main>
+      </div>
     </div>
   );
 }

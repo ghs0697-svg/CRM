@@ -185,6 +185,7 @@ export default function BookingPage() {
   // ── RENDER ─────────────────────────────────────────────
   return (
     <div className={styles.container}>
+      <div className={styles.appShell}>
       <header className={styles.header}>
         {step !== STEPS.IDENTIFY && step !== STEPS.DONE && (
           <button className={styles.backBtn} onClick={goBack} aria-label="Voltar">←</button>
@@ -273,6 +274,7 @@ export default function BookingPage() {
           />
         )}
       </main>
+      </div>
     </div>
   );
 }
