@@ -1,0 +1,35 @@
+.badge {
+  position: fixed;
+  bottom: 12px;
+  left: 92px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.75rem;
+  box-shadow: var(--shadow-sm);
+  z-index: 50;
+}
+
+.email {
+  color: var(--text-muted);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn {
+  background: none;
+  border: none;
+  color: var(--gold);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 0;
+}
+
+.btn:hover { text-decoration: underline; }
