@@ -893,3 +893,25 @@
 @media (max-width: 900px) {
   .notesDrawer { right: 0; max-width: 100vw; }
 }
+
+/* ===== Mobile (celular) — Alunos: header compacto + busca usável ===== */
+@media (max-width: 640px) {
+  .header { padding: 12px 14px 8px 14px; }
+  .breadcrumb { font-size: 1.05rem; margin-bottom: 10px; }
+
+  /* 4 cards de status viram grade 2x2 compacta (não empilhar gigante) */
+  .statsCards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .statCard { min-width: 0; padding: 8px 10px; gap: 8px; box-shadow: none; }
+  .statIcon { width: 28px; height: 28px; font-size: 0.85rem; }
+  .statValue { font-size: 1.05rem; }
+  .statLabel { font-size: 0.7rem; }
+
+  /* Busca ocupa a linha inteira; filtros quebram embaixo */
+  .actionBar { gap: 8px; }
+  .searchInput { flex: 1 1 100%; min-width: 0; max-width: none; }
+  .filterSelect { flex: 1 1 auto; }
+
+  /* Tabela: padding menor + rola horizontal sem espremer */
+  .tableWrapper { padding: 0 12px 24px 12px; }
+  .dataTable th, .dataTable td { padding: 10px 10px; font-size: 0.8rem; white-space: nowrap; }
+}
