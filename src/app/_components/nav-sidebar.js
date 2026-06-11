@@ -46,6 +46,10 @@ export default function NavSidebar() {
           <span className={styles.icon}>📊</span>
           <span className={styles.label}>Métricas</span>
         </Link>
+        <Link href="/suporte" className={`${styles.navLink} ${pathname.startsWith("/suporte") ? styles.active : ""}`} title="Suporte">
+          <span className={styles.icon}>💬</span>
+          <span className={styles.label}>Suporte</span>
+        </Link>
       </nav>
       <button className={styles.themeToggle} onClick={toggleTheme} title="Alternar tema" aria-label="Alternar tema">
         {hydrated ? (theme === "dark" ? "☀️" : "🌙") : "·"}

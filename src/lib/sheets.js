@@ -91,6 +91,68 @@ export async function getStudents() {
     .reverse();
 }
 
+// Lê uma aba inteira (sem cabeçalho) da MESMA planilha mestre. Tolera aba
+// inexistente (ex: FEEDBACKS antes do 1º registro) retornando [].
+async function readTabRows(tabName, lastCol) {
+  if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
+  const sheets = await getSheetsClient();
+  let res;
+  try {
+    res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${tabName}!A2:${lastCol}`,
+      valueRenderOption: "FORMATTED_VALUE",
+      dateTimeRenderOption: "FORMATTED_STRING",
+    });
+  } catch (e) {
+    if (String(e?.message || e).toLowerCase().includes("unable to parse range")) return [];
+    throw e;
+  }
+  return (res.data.values || []).filter(
+    (r) => Array.isArray(r) && r.some((c) => String(c || "").trim() !== "")
+  );
+}
+
+/**
+ * Pedidos de ajuste (AJUSTES_PEDIDOS) + feedbacks (FEEDBACKS) pra aba Suporte
+ * do CRM. Read-only. As duas abas vivem na mesma planilha mestre.
+ */
+export async function getSupportTickets() {
+  // AJUSTES_PEDIDOS: A Timestamp | B Status | C Aluno | D SheetId | E Phone |
+  //                  F Contexto | G Pedido | H AppliedAt | I Observacao | J Fotos
+  const ajRows = await readTabRows("AJUSTES_PEDIDOS", "J");
+  const ajustes = ajRows
+    .map((r) => ({
+      kind: "ajuste",
+      timestamp: r[0] || "",
+      status: (r[1] || "pending").trim(),
+      aluno: r[2] || "",
+      sheetId: r[3] || "",
+      phone: r[4] || "",
+      contexto: r[5] || "",
+      mensagem: r[6] || "",
+      appliedAt: r[7] || "",
+      obs: r[8] || "",
+      fotos: r[9] || "",
+    }))
+    .reverse();
+
+  // FEEDBACKS: A Timestamp | B Aluno | C SheetId | D Tipo | E Mensagem
+  const fbRows = await readTabRows("FEEDBACKS", "E");
+  const feedbacks = fbRows
+    .map((r) => ({
+      kind: "feedback",
+      timestamp: r[0] || "",
+      aluno: r[1] || "",
+      sheetId: r[2] || "",
+      tipo: r[3] || "",
+      mensagem: r[4] || "",
+    }))
+    .reverse();
+
+  return { ajustes, feedbacks };
+}
+
 /**
  * Adiciona uma linha nova na CONTROLE ALUNOS.
  * Usa append em A:I com os campos essenciais (Nome, Contato, Data Compra,
