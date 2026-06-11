@@ -3,13 +3,33 @@
 import { useState, useEffect, useMemo } from "react";
 import styles from "./suporte.module.css";
 
-// "DD/MM/YYYY HH:MM:SS" → epoch (pra ordenar). 0 se não parsear.
-function parseTs(s) {
-  const m = String(s || "").match(
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/
-  );
-  if (!m) return 0;
-  return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime();
+// O timestamp pode vir como "DD/MM/YYYY HH:MM:SS" (FEEDBACKS) OU como número de
+// série do Sheets (AJUSTES_PEDIDOS, cuja coluna não é formatada como data).
+// Estas helpers cobrem os dois casos pra ordenar e exibir bonito.
+function _serial(raw) {
+  const s = String(raw || "").trim();
+  if (!/^\d+([.,]\d+)?$/.test(s)) return null;
+  const v = parseFloat(s.replace(",", "."));
+  return v > 30000 ? v : null; // > ~ano 1982 = serial de data
+}
+function _dmy(raw) {
+  return String(raw || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+}
+function parseTs(raw) {
+  const sv = _serial(raw);
+  if (sv != null) return Math.round((sv - 25569) * 86400000);
+  const m = _dmy(raw);
+  if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+  return 0;
+}
+function fmtTs(raw) {
+  const sv = _serial(raw);
+  if (sv != null) {
+    const d = new Date(Math.round((sv - 25569) * 86400000));
+    const p = (n) => String(n).padStart(2, "0");
+    return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+  }
+  return String(raw || ""); // já é DD/MM/YYYY legível
 }
 const norm = (s) =>
   String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -83,7 +103,7 @@ export default function SuportePage() {
                 {it.kind === "ajuste" && (
                   <span className={`${styles.status} ${styles["st_" + (it.status || "pending")] || ""}`}>{it.status || "pending"}</span>
                 )}
-                <span className={styles.ts}>{it.timestamp}</span>
+                <span className={styles.ts}>{fmtTs(it.timestamp)}</span>
               </div>
               <div className={styles.aluno}>{it.aluno || "—"}</div>
               <div className={styles.msg}>{it.mensagem || "—"}</div>
