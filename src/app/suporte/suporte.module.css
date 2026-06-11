@@ -47,6 +47,7 @@
 }
 .cardAjuste { border-left-color: var(--gold); }
 .cardFeedback { border-left-color: #3b82f6; }
+.cardChat { border-left-color: #8b5cf6; }
 
 .cardTop {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
@@ -58,6 +59,15 @@
 .badgeAjuste { background: var(--surface-2); color: var(--text-main); }
 .badgeFeedback { background: #dbeafe; color: #1d4ed8; }
 :global(.dark) .badgeFeedback { background: #1e3a5f; color: #93c5fd; }
+.badgeChat { background: #ede9fe; color: #6d28d9; }
+:global(.dark) .badgeChat { background: #3b2e5f; color: #c4b5fd; }
+
+.resposta {
+  margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+  background: var(--surface-2); font-size: 12.5px; color: var(--text-muted);
+  line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+}
+.respLabel { font-weight: 700; color: #8b5cf6; margin-right: 4px; }
 
 .status {
   font-size: 10px; font-weight: 700; text-transform: uppercase;

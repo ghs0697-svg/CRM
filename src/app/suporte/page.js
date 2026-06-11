@@ -37,10 +37,10 @@ const norm = (s) =>
 const PROTO = "https://app.metodogh.com.br/?sheet=";
 
 export default function SuportePage() {
-  const [data, setData] = useState({ ajustes: [], feedbacks: [] });
+  const [data, setData] = useState({ ajustes: [], feedbacks: [], chats: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filtro, setFiltro] = useState("todos"); // todos | ajuste | feedback
+  const [filtro, setFiltro] = useState("todos"); // todos | ajuste | feedback | chat
   const [busca, setBusca] = useState("");
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export default function SuportePage() {
         const r = await fetch("/api/suporte", { cache: "no-store" });
         const j = await r.json();
         if (!alive) return;
-        if (j.ok) setData({ ajustes: j.ajustes || [], feedbacks: j.feedbacks || [] });
+        if (j.ok) setData({ ajustes: j.ajustes || [], feedbacks: j.feedbacks || [], chats: j.chats || [] });
         else setError(j.error || "erro");
       } catch (e) {
         if (alive) setError(String(e.message || e));
@@ -62,16 +62,17 @@ export default function SuportePage() {
   }, []);
 
   const items = useMemo(() => {
-    let all = [...data.ajustes, ...data.feedbacks];
+    let all = [...data.ajustes, ...data.feedbacks, ...data.chats];
     all.sort((a, b) => parseTs(b.timestamp) - parseTs(a.timestamp));
     if (filtro !== "todos") all = all.filter((i) => i.kind === filtro);
     const q = norm(busca).trim();
-    if (q) all = all.filter((i) => norm(i.aluno).includes(q) || norm(i.mensagem).includes(q));
+    if (q) all = all.filter((i) => norm(i.aluno).includes(q) || norm(i.mensagem).includes(q) || norm(i.resposta).includes(q));
     return all;
   }, [data, filtro, busca]);
 
   const nAj = data.ajustes.length;
   const nFb = data.feedbacks.length;
+  const nCh = data.chats.length;
 
   return (
     <div className={styles.page}>
@@ -81,9 +82,10 @@ export default function SuportePage() {
       </header>
 
       <div className={styles.filters}>
-        <button className={`${styles.chip} ${filtro === "todos" ? styles.active : ""}`} onClick={() => setFiltro("todos")}>Tudo ({nAj + nFb})</button>
+        <button className={`${styles.chip} ${filtro === "todos" ? styles.active : ""}`} onClick={() => setFiltro("todos")}>Tudo ({nAj + nFb + nCh})</button>
         <button className={`${styles.chip} ${filtro === "ajuste" ? styles.active : ""}`} onClick={() => setFiltro("ajuste")}>🔧 Ajustes ({nAj})</button>
         <button className={`${styles.chip} ${filtro === "feedback" ? styles.active : ""}`} onClick={() => setFiltro("feedback")}>💬 Feedbacks ({nFb})</button>
+        <button className={`${styles.chip} ${filtro === "chat" ? styles.active : ""}`} onClick={() => setFiltro("chat")}>🤖 Chatbot ({nCh})</button>
         <input className={styles.search} placeholder="Buscar aluno ou texto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
 
@@ -95,10 +97,10 @@ export default function SuportePage() {
         {items.map((it, i) => {
           const fotoUrl = it.kind === "ajuste" && it.fotos ? (String(it.fotos).match(/https?:\/\/\S+/) || [])[0] : null;
           return (
-            <div key={i} className={`${styles.card} ${it.kind === "ajuste" ? styles.cardAjuste : styles.cardFeedback}`}>
+            <div key={i} className={`${styles.card} ${it.kind === "ajuste" ? styles.cardAjuste : it.kind === "chat" ? styles.cardChat : styles.cardFeedback}`}>
               <div className={styles.cardTop}>
-                <span className={`${styles.badge} ${it.kind === "ajuste" ? styles.badgeAjuste : styles.badgeFeedback}`}>
-                  {it.kind === "ajuste" ? `🔧 Ajuste · ${it.contexto || "—"}` : `💬 ${it.tipo || "Feedback"}`}
+                <span className={`${styles.badge} ${it.kind === "ajuste" ? styles.badgeAjuste : it.kind === "chat" ? styles.badgeChat : styles.badgeFeedback}`}>
+                  {it.kind === "ajuste" ? `🔧 Ajuste · ${it.contexto || "—"}` : it.kind === "chat" ? `🤖 Chatbot${it.tipo === "pro_gh" ? " · pediu ajuste" : ""}` : `💬 ${it.tipo || "Feedback"}`}
                 </span>
                 {it.kind === "ajuste" && (
                   <span className={`${styles.status} ${styles["st_" + (it.status || "pending")] || ""}`}>{it.status || "pending"}</span>
@@ -107,12 +109,15 @@ export default function SuportePage() {
               </div>
               <div className={styles.aluno}>{it.aluno || "—"}</div>
               <div className={styles.msg}>{it.mensagem || "—"}</div>
+              {it.kind === "chat" && it.resposta && (
+                <div className={styles.resposta}><span className={styles.respLabel}>🤖 IA:</span> {it.resposta}</div>
+              )}
               {(it.sheetId || fotoUrl) && (
                 <div className={styles.cardFoot}>
                   {it.sheetId && (
                     <a className={styles.link} href={`${PROTO}${it.sheetId}&tab=TREINO`} target="_blank" rel="noopener">ver protocolo</a>
                   )}
-                  {it.kind === "ajuste" && it.sheetId && (
+                  {(it.kind === "ajuste" || it.kind === "chat") && it.sheetId && (
                     <a className={styles.link} href={`${PROTO}${it.sheetId}&tab=TREINO&edit=1`} target="_blank" rel="noopener">abrir no editor</a>
                   )}
                   {fotoUrl && (

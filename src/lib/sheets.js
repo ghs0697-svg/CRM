@@ -150,7 +150,24 @@ export async function getSupportTickets() {
     }))
     .reverse();
 
-  return { ajustes, feedbacks };
+  // CHAT_LOGS: A Timestamp | B Aluno | C SheetId | D Pergunta | E Resposta | F Tipo
+  // Cap nos 300 mais recentes — o chatbot pode gerar muito volume.
+  const clRows = await readTabRows("CHAT_LOGS", "F");
+  const chats = clRows
+    .map((r) => ({
+      kind: "chat",
+      timestamp: r[0] || "",
+      aluno: r[1] || "",
+      sheetId: r[2] || "",
+      pergunta: r[3] || "",
+      resposta: r[4] || "",
+      tipo: r[5] || "",
+      mensagem: r[3] || "",
+    }))
+    .reverse()
+    .slice(0, 300);
+
+  return { ajustes, feedbacks, chats };
 }
 
 /**
