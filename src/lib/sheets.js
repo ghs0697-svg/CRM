@@ -170,6 +170,34 @@ export async function getSupportTickets() {
   return { ajustes, feedbacks, chats };
 }
 
+// Match de telefone igual phoneMatches_ do Apps Script: extrai só os dígitos dos
+// dois lados e casa se um termina com o outro (mín 8 dígitos). NÃO força o
+// prefixo 55 — tem aluno do exterior sem 55.
+export function phoneSuffixMatch(a, b) {
+  const da = String(a || "").replace(/\D/g, "");
+  const db = String(b || "").replace(/\D/g, "");
+  if (da.length < 8 || db.length < 8) return false;
+  return da.length >= db.length ? da.slice(-db.length) === db : db.slice(-da.length) === da;
+}
+
+/**
+ * Notas de perfil dos alunos (aba NOTAS_SUPORTE da planilha mestre).
+ * A Telefone (só dígitos) | B Nome | C Perfil/Nota (multilinha, já formatado) |
+ * D Atualizado. O texto da col C vai direto no campo de notas do CRM.
+ * Tolera a aba não existir ainda (retorna []).
+ */
+export async function getNotasSuporte() {
+  const rows = await readTabRows("NOTAS_SUPORTE", "D");
+  return rows
+    .map((r) => ({
+      digits: String(r[0] || "").replace(/\D/g, ""),
+      nome: r[1] || "",
+      nota: String(r[2] || "").trim(),
+      atualizado: r[3] || "",
+    }))
+    .filter((n) => n.digits.length >= 8 && n.nota);
+}
+
 /**
  * Adiciona uma linha nova na CONTROLE ALUNOS.
  * Usa append em A:I com os campos essenciais (Nome, Contato, Data Compra,

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStudents, appendStudent } from "@/lib/sheets";
+import { getStudents, appendStudent, getNotasSuporte, phoneSuffixMatch } from "@/lib/sheets";
 import { getInsight } from "@/lib/insights";
 import { auth } from "@/auth";
 
@@ -9,9 +9,18 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const students = await getStudents();
+    // Notas de perfil vivas da aba NOTAS_SUPORTE (sobrescrevem o insight estático).
+    const notas = await getNotasSuporte().catch((e) => {
+      console.error("[/api/students] NOTAS_SUPORTE:", e);
+      return [];
+    });
     const enriched = students.map((s) => {
       const insight = getInsight(s.contato);
-      return insight ? { ...s, insight } : s;
+      const nota = notas.find((n) => phoneSuffixMatch(s.contato, n.digits));
+      const out = { ...s };
+      if (insight) out.insight = insight;
+      if (nota) out.notaSuporte = { nota: nota.nota, atualizado: nota.atualizado };
+      return out;
     });
     return NextResponse.json({ ok: true, students: enriched });
   } catch (err) {

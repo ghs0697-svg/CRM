@@ -181,33 +181,36 @@ function StatCard({ color, icon, value, label }) {
   );
 }
 
-function NotesDrawer({ insight, nome, open, onClose }) {
-  if (!insight) return null;
-  const sections = [
-    {
-      title: "Sobre o aluno",
-      fields: [
-        { key: "dor_principal", label: "Dor principal" },
-        { key: "mudancas_corpo", label: "Quer mudar no corpo" },
-      ],
-    },
-    {
-      title: "Insatisfações",
-      fields: [
-        { key: "insatisfacao_suporte", label: "Com o suporte / atendimento" },
-        { key: "insatisfacao_produto", label: "Com o produto (treino / dieta / app)" },
-        { key: "prioridade_protocolo", label: "Pra Reajustes (resultado / prioridade)" },
-      ],
-    },
-    {
-      title: "Outros",
-      fields: [
-        // Compat: aceita o campo antigo "insatisfacoes" ate re-rodar pipeline
-        { key: "insatisfacoes", label: "Insatisfações (formato antigo)" },
-        { key: "notas_extras", label: "Notas extras" },
-      ],
-    },
-  ]
+function NotesDrawer({ insight, notaSuporte, nome, open, onClose }) {
+  if (!insight && !notaSuporte) return null;
+  const sections = (insight
+    ? [
+        {
+          title: "Sobre o aluno",
+          fields: [
+            { key: "dor_principal", label: "Dor principal" },
+            { key: "mudancas_corpo", label: "Quer mudar no corpo" },
+          ],
+        },
+        {
+          title: "Insatisfações",
+          fields: [
+            { key: "insatisfacao_suporte", label: "Com o suporte / atendimento" },
+            { key: "insatisfacao_produto", label: "Com o produto (treino / dieta / app)" },
+            { key: "prioridade_protocolo", label: "Pra Reajustes (resultado / prioridade)" },
+          ],
+        },
+        {
+          title: "Outros",
+          fields: [
+            // Compat: aceita o campo antigo "insatisfacoes" ate re-rodar pipeline
+            { key: "insatisfacoes", label: "Insatisfações (formato antigo)" },
+            { key: "notas_extras", label: "Notas extras" },
+          ],
+        },
+      ]
+    : []
+  )
     .map((s) => ({ ...s, fields: s.fields.filter((f) => insight[f.key]) }))
     .filter((s) => s.fields.length > 0);
 
@@ -222,7 +225,14 @@ function NotesDrawer({ insight, nome, open, onClose }) {
         <button className={styles.drawerClose} onClick={onClose} title="Fechar">✕</button>
       </div>
       <div className={styles.notesDrawerBody}>
-        {sections.length === 0 ? (
+        {notaSuporte ? (
+          <>
+            <div className={styles.notaSuporteText}>{notaSuporte.nota}</div>
+            {notaSuporte.atualizado && (
+              <div className={styles.notaSuporteFoot}>Atualizado: {notaSuporte.atualizado}</div>
+            )}
+          </>
+        ) : sections.length === 0 ? (
           <div style={{ padding: 20, color: "var(--text-muted)" }}>Sem notas registradas.</div>
         ) : (
           sections.map((sec) => (
@@ -498,6 +508,7 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
       <div className={`${styles.overlay} ${open ? styles.open : ""}`} onClick={onClose} />
       <NotesDrawer
         insight={row?.insight}
+        notaSuporte={row?.notaSuporte}
         nome={row?.nome}
         open={open && notesOpen}
         onClose={() => setNotesOpen(false)}
@@ -533,7 +544,7 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
               </div>
             )}
 
-            {row.insight && (
+            {(row.insight || row.notaSuporte) && (
               <button
                 className={`${styles.notesToggle} ${notesOpen ? styles.active : ""}`}
                 onClick={() => setNotesOpen((v) => !v)}
