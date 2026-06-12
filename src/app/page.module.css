@@ -569,6 +569,19 @@
 
 .editBtn:hover { background: var(--surface-2); }
 
+.deleteBtn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  font-size: 0.95rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-right: 4px;
+}
+.deleteBtn:hover { background: var(--overdue-bg); border-color: var(--overdue); }
+.deleteBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .editInput {
   background: var(--surface-2);
   border: 1px solid var(--gold);

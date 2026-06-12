@@ -433,6 +433,31 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
   const [editForm, setEditForm] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!row?._rowIndex) return;
+    const ok = window.confirm(
+      `Excluir "${row.nome}" da planilha mestre?\n\nIsso remove a linha permanentemente. Não dá pra desfazer.`
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setEditError(null);
+    try {
+      const res = await fetch(
+        `/api/alunos/${row._rowIndex}?nome=${encodeURIComponent(row.nome || "")}`,
+        { method: "DELETE" }
+      );
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      onClose();          // fecha o drawer (a linha sumiu)
+      onEditSuccess?.();  // recarrega a lista
+    } catch (err) {
+      setEditError(err.message || String(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     if (!row) return;
@@ -533,6 +558,16 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
                   title="Editar dados do aluno"
                 >
                   ✏️
+                </button>
+              )}
+              {!editMode && row._rowIndex && (
+                <button
+                  className={styles.deleteBtn}
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  title="Excluir aluno da mestre"
+                >
+                  {deleting ? "…" : "🗑️"}
                 </button>
               )}
               <button className={styles.drawerClose} onClick={onClose} title="Fechar (ESC)">✕</button>

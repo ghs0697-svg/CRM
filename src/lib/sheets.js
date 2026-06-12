@@ -392,3 +392,60 @@ export async function updateStudent(rowNumber, partial) {
 
   return { updated: updates.length, fields: fieldsApplied };
 }
+
+/**
+ * Exclui a linha do aluno na mestre (deleteDimension — remove a linha inteira).
+ * Segurança: confere que a linha AINDA é o aluno esperado (por nome) antes de
+ * apagar, pra não remover a linha errada caso a tabela tenha mudado entre a
+ * leitura do CRM e o clique no botão.
+ */
+export async function deleteStudent(rowNumber, expectedName) {
+  if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
+  if (!Number.isInteger(rowNumber) || rowNumber < 2) throw new Error("row inválido");
+
+  const auth = new (await import("googleapis")).google.auth.GoogleAuth({
+    credentials: getCredentials(),
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+  const sheetsRW = (await import("googleapis")).google.sheets({ version: "v4", auth });
+  const tab = TAB || "CONTROLE ALUNOS";
+
+  // 1. Confere o nome atual da linha (proteção contra deslocamento de linha)
+  const cur = await sheetsRW.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${tab}!A${rowNumber}:B${rowNumber}`,
+  });
+  const curNome = String(cur.data.values?.[0]?.[0] || "").trim();
+  if (!curNome) throw new Error("a linha já está vazia");
+  if (expectedName != null && String(expectedName).trim() !== "") {
+    const norm = (s) => String(s).trim().toLowerCase();
+    if (norm(curNome) !== norm(expectedName)) {
+      const e = new Error(`a linha mudou (esperava "${expectedName}", achei "${curNome}"). Atualize a lista e tente de novo.`);
+      e.code = "ROW_MISMATCH";
+      throw e;
+    }
+  }
+
+  // 2. Descobre o gid (sheetId numérico) da aba
+  const meta = await sheetsRW.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+    fields: "sheets(properties(title,sheetId))",
+  });
+  const sheet = (meta.data.sheets || []).find((s) => s.properties.title === tab);
+  if (!sheet) throw new Error(`aba "${tab}" não encontrada`);
+  const gid = sheet.properties.sheetId;
+
+  // 3. Deleta a linha inteira (startIndex 0-based = rowNumber - 1)
+  await sheetsRW.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: [{
+        deleteDimension: {
+          range: { sheetId: gid, dimension: "ROWS", startIndex: rowNumber - 1, endIndex: rowNumber },
+        },
+      }],
+    },
+  });
+
+  return { row: rowNumber, deletedName: curNome };
+}
