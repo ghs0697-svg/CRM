@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStudents, appendStudent, getNotasSuporte, phoneSuffixMatch } from "@/lib/sheets";
+import { getStudents, appendStudent, getNotasSuporte, phoneSuffixMatch, getLastWorkouts } from "@/lib/sheets";
 import { getInsight } from "@/lib/insights";
 import { auth } from "@/auth";
 
@@ -14,12 +14,24 @@ export async function GET() {
       console.error("[/api/students] NOTAS_SUPORTE:", e);
       return [];
     });
+    // Último treino registrado pelo app (aba LOGS) — base do alerta de sumido
+    const lastWorkouts = await getLastWorkouts().catch((e) => {
+      console.error("[/api/students] LOGS:", e);
+      return new Map();
+    });
+    const hoje = Date.now();
     const enriched = students.map((s) => {
       const insight = getInsight(s.contato);
       const nota = notas.find((n) => phoneSuffixMatch(s.contato, n.digits));
       const out = { ...s };
       if (insight) out.insight = insight;
       if (nota) out.notaSuporte = { nota: nota.nota, atualizado: nota.atualizado };
+      const sid = (String(s.linkSite || "").match(/[?&]sheet=([\w-]+)/) || [])[1];
+      const lw = sid ? lastWorkouts.get(sid) : null;
+      if (lw) {
+        out.ultimoTreino = lw;
+        out.diasSemTreino = Math.max(0, Math.floor((hoje - new Date(lw + "T12:00:00").getTime()) / 86400000));
+      }
       return out;
     });
     return NextResponse.json({ ok: true, students: enriched });

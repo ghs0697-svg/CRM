@@ -550,6 +550,13 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
                     {formatPhone(row.contato)}
                   </a>
                 )}
+                {row.ultimoTreino && (
+                  <div style={{ fontSize: "0.75rem", marginTop: 2, color: row.diasSemTreino >= 7 ? "var(--overdue)" : "var(--text-muted)" }}>
+                    🏋️ Último treino: {row.ultimoTreino.split("-").reverse().join("/")}
+                    {row.diasSemTreino >= 1 ? ` · há ${row.diasSemTreino} dia${row.diasSemTreino > 1 ? "s" : ""}` : " · hoje"}
+                    {row.diasSemTreino >= 7 ? " 😴" : ""}
+                  </div>
+                )}
               </div>
               {!editMode && row._rowIndex && (
                 <button
@@ -754,15 +761,17 @@ export default function Home() {
   }, [students]);
 
   const insightCounts = useMemo(() => {
-    let suporte = 0, produto = 0, reajuste = 0;
+    let suporte = 0, produto = 0, reajuste = 0, sumidos = 0;
     for (const s of students) {
+      // Sumido = já treinou pelo app alguma vez E está 7+ dias parado E o plano segue ativo
+      if (s.ultimoTreino && s.diasSemTreino >= 7 && s.statusPlano === "Ativo") sumidos++;
       const i = s.insight;
       if (!i) continue;
       if (i.insatisfacao_suporte) suporte++;
       if (i.insatisfacao_produto) produto++;
       if (i.prioridade_protocolo) reajuste++;
     }
-    return { suporte, produto, reajuste };
+    return { suporte, produto, reajuste, sumidos };
   }, [students]);
 
   const visible = useMemo(() => {
@@ -771,6 +780,8 @@ export default function Home() {
     if (filterTipo !== "all")   arr = arr.filter((s) => s.tipoPlano === filterTipo);
     if (filterInsight) {
       arr = arr.filter((s) => {
+        if (filterInsight === "sumido")
+          return !!(s.ultimoTreino && s.diasSemTreino >= 7 && s.statusPlano === "Ativo");
         const i = s.insight;
         if (!i) return false;
         if (filterInsight === "suporte")  return !!i.insatisfacao_suporte;
@@ -869,7 +880,7 @@ export default function Home() {
             </button>
           </div>
 
-          {(insightCounts.suporte + insightCounts.produto + insightCounts.reajuste > 0) && (
+          {(insightCounts.suporte + insightCounts.produto + insightCounts.reajuste + insightCounts.sumidos > 0) && (
             <div className={styles.insightFilters}>
               <span className={styles.insightFiltersLabel}>📓 Notas:</span>
               <button
@@ -895,6 +906,14 @@ export default function Home() {
               >
                 Pra Reajustes
                 <span className={styles.insightChipCount}>{insightCounts.reajuste}</span>
+              </button>
+              <button
+                className={`${styles.insightChip} ${filterInsight === "sumido" ? styles.active : ""}`}
+                onClick={() => setFilterInsight(filterInsight === "sumido" ? null : "sumido")}
+                title="Alunos ativos que já treinaram pelo app mas estão 7+ dias sem concluir treino — risco de churn, vale puxar no WhatsApp"
+              >
+                😴 Sumido 7+ dias
+                <span className={styles.insightChipCount}>{insightCounts.sumidos}</span>
               </button>
               {filterInsight && (
                 <button

@@ -199,6 +199,24 @@ export async function getNotasSuporte() {
 }
 
 /**
+ * Último treino concluído por aluno (aba LOGS do mestre, escrita pelo app de
+ * treino a cada conclusão). C SheetId | D Data Treino (YYYY-MM-DD).
+ * Retorna um Map sheetId → "YYYY-MM-DD" (data mais recente).
+ */
+export async function getLastWorkouts() {
+  const rows = await readTabRows("LOGS", "D");
+  const map = new Map();
+  for (const r of rows) {
+    const sid = String(r[2] || "").trim();
+    const date = String(r[3] || "").trim();
+    if (!sid || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const cur = map.get(sid);
+    if (!cur || date > cur) map.set(sid, date);
+  }
+  return map;
+}
+
+/**
  * Adiciona uma linha nova na CONTROLE ALUNOS.
  * Usa append em A:I com os campos essenciais (Nome, Contato, Data Compra,
  * Protocolo Inicial, Protocolo Atual, Versão Atual, Tipo Plano, Hormonal,
