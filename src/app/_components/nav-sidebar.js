@@ -58,6 +58,10 @@ export default function NavSidebar() {
           <span className={styles.icon}>💰</span>
           <span className={styles.label}>Receita</span>
         </Link>
+        <Link href="/engajamento" className={`${styles.navLink} ${pathname.startsWith("/engajamento") ? styles.active : ""}`} title="Engajamento">
+          <span className={styles.icon}>🔥</span>
+          <span className={styles.label}>Treinos</span>
+        </Link>
         <Link href="/suporte" className={`${styles.navLink} ${pathname.startsWith("/suporte") ? styles.active : ""}`} title="Suporte">
           <span className={styles.icon}>💬</span>
           <span className={styles.label}>Suporte</span>
