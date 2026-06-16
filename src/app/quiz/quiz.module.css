@@ -1,0 +1,109 @@
+.container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  padding: 20px 32px;
+  background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.breadcrumb {
+  font-size: 1.15rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.breadcrumb span { color: var(--text-muted); }
+.breadcrumb strong { color: var(--text-main); font-weight: 600; }
+
+.errorBanner {
+  margin-top: 12px;
+  background: var(--overdue-bg);
+  color: var(--overdue);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.body {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 32px 40px 32px;
+}
+
+/* Cards de KPI */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+}
+.cardValue { font-size: 1.6rem; font-weight: 700; color: var(--text-main); }
+.cardLabel { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+
+/* Seções */
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+.sectionTitle { font-size: 0.95rem; font-weight: 600; color: var(--text-main); margin: 0 0 14px 0; }
+.sectionBody { display: flex; flex-direction: column; gap: 8px; }
+
+/* Barras */
+.barRow { display: flex; align-items: center; gap: 12px; }
+.barLabel {
+  flex: 0 0 130px; font-size: 0.82rem; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.barTrack { flex: 1; height: 18px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+.barFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), #B8860B);
+  border-radius: 5px;
+  transition: width 0.4s;
+}
+.barVal { flex: 0 0 130px; text-align: right; font-size: 0.82rem; color: var(--text-main); }
+.barVal em { color: var(--text-muted); font-style: normal; }
+
+/* Por dia (mini barras) */
+.days {
+  display: flex; align-items: flex-end; gap: 4px;
+  height: 130px; padding-top: 8px;
+}
+.day { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+.dayCount { font-size: 0.62rem; color: var(--text-muted); }
+.dayBar { width: 100%; max-width: 22px; background: var(--gold); border-radius: 3px 3px 0 0; min-height: 4px; }
+.daysAxis { margin-top: 8px; font-size: 0.72rem; color: var(--text-muted); text-align: center; }
+
+@media (max-width: 640px) {
+  .header { padding: 14px 14px; }
+  .body { padding: 16px 14px 32px 14px; }
+  .cards { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; }
+  .cardValue { font-size: 1.25rem; }
+  .barLabel { flex-basis: 90px; }
+  .barVal { flex-basis: 96px; font-size: 0.75rem; }
+}
