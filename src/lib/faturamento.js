@@ -16,7 +16,11 @@ function getCredentials() {
 function parseMoney(v) {
   if (v == null) return 0;
   let s = String(v).replace(/[^\d,.-]/g, "");
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", "."); // BR: ponto=milhar, vírgula=decimal
+  if (s.includes(",")) {
+    s = s.replace(/\./g, "").replace(",", "."); // BR: vírgula=decimal, pontos=milhar
+  } else if (/\.\d{3}(\.|$)/.test(s)) {
+    s = s.replace(/\./g, ""); // ponto de milhar sem decimal (ex "1.591" -> 1591)
+  }
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : 0;
 }
