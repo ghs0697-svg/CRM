@@ -9,9 +9,9 @@ export const maxDuration = 60;
  * GET /api/cron/follow-sumidos
  *
  * Cron diário (Vercel). Monta o roster de alunos sumidos (ativos, 7+ dias sem
- * treinar pelo app), grava na aba FOLLOW_SUMIDOS da mestre e dispara os
- * elegíveis (cadência de 7 dias) pro webhook do Make, que manda via Z-API em
- * drip lento. NÃO manda WhatsApp direto — só computa + dispara pro Make.
+ * treinar pelo app) e grava na aba FOLLOW_SUMIDOS da mestre, com a flag
+ * elegivelAgora (cadência de 7 dias). NÃO manda WhatsApp: o Make lê as linhas
+ * elegivelAgora=SIM, dispara via Z-API em drip e carimba ultimoContato de volta.
  *
  * Auth: header `Authorization: Bearer <CRON_SECRET>` (Vercel Cron usa esse) OU
  * `?secret=<CRON_SECRET>` pra teste manual.
@@ -32,7 +32,7 @@ export async function GET(req) {
   const dryRun = url.searchParams.get("dryRun") === "1";
   try {
     const result = await runFollowSumidos({ dryRun });
-    console.log("[cron/follow-sumidos]", JSON.stringify({ dryRun, total: result.total, elegiveis: result.elegiveis, fired: result.fired, fireOk: result.fireOk }));
+    console.log("[cron/follow-sumidos]", JSON.stringify({ dryRun, total: result.total, elegiveis: result.elegiveis }));
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     console.error("[cron/follow-sumidos] erro:", err);

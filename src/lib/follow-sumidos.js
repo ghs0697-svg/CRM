@@ -6,8 +6,9 @@ import { google } from "googleapis";
 //
 // Critério (decisão GH): ativo + já treinou pelo app + 7+ dias SEM treinar (sem teto).
 // Cadência: re-dispara a cada 7 dias enquanto seguir sumido ("ficar em cima").
-// Envio: NÃO manda direto — POSTa os elegíveis pro webhook do Make, que dispara
-//        via Z-API em drip lento (anti-ban). O CRM só computa o roster + cadência.
+// Envio: o CRM NÃO manda WhatsApp — só mantém a aba. O Make lê as linhas com
+//        elegivelAgora=SIM, dispara via Z-API em drip lento (anti-ban) e carimba
+//        ultimoContato de volta (zera o elegivelAgora por 7 dias = a cadência).
 //
 // Estado visível na aba FOLLOW_SUMIDOS da mestre (GH audita / edita à mão).
 
@@ -151,37 +152,11 @@ export async function runFollowSumidos({ dryRun = false } = {}) {
     return { dryRun: true, total: roster.length, elegiveis: elegiveis.length, roster };
   }
 
-  // dispara os elegíveis pro Make (que manda via Z-API em drip)
-  const webhook = process.env.MAKE_FOLLOW_WEBHOOK;
-  let fired = 0, fireOk = false, fireErr = null;
-  if (webhook && elegiveis.length) {
-    const payload = elegiveis.map((s) => ({
-      nome: s.nome,
-      primeiroNome: s.nome.split(" ")[0] || s.nome,
-      telefone: s.telefone,
-      diasSemTreinar: s.diasSemTreinar,
-      vez: (s.vezes || 0) + 1,
-    }));
-    try {
-      const res = await fetch(webhook, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tipo: "follow_sumido", total: payload.length, alunos: payload }),
-        signal: AbortSignal.timeout(30000),
-      });
-      fireOk = res.ok;
-      if (!fireOk) fireErr = `HTTP ${res.status}`;
-    } catch (e) {
-      fireErr = String(e?.message || e);
-    }
-    if (fireOk) {
-      fired = elegiveis.length;
-      for (const s of elegiveis) { s.ultimoContato = today; s.vezes = (s.vezes || 0) + 1; s.elegivel = false; }
-    }
-  }
-
-  // grava a aba inteira (header + roster atualizado). Quem recuperou (treinou de
-  // novo, <7 dias) sai do roster e some da aba no próximo ciclo.
+  // Grava a aba inteira (header + roster). O CRM NÃO manda WhatsApp: quem manda
+  // é o Make, lendo as linhas com elegivelAgora=SIM, disparando via Z-API em drip
+  // e carimbando de volta ultimoContato + vezes (isso zera o elegivelAgora por 7
+  // dias = a cadência). Quem treinou de novo (<7 dias) sai do roster e some da
+  // aba neste ciclo. O ultimoContato/vezes do ciclo anterior é preservado acima.
   const rows = roster.map((s) => [
     s.sheetId, s.nome, s.telefone, s.status, s.ultimoTreino,
     s.diasSemTreinar, s.ultimoContato || "", s.vezes || 0, s.elegivel ? "SIM" : "", today,
@@ -194,5 +169,5 @@ export async function runFollowSumidos({ dryRun = false } = {}) {
     requestBody: { values: [HEADER, ...rows] },
   });
 
-  return { total: roster.length, elegiveis: elegiveis.length, fired, fireOk, fireErr, webhookSet: !!webhook };
+  return { total: roster.length, elegiveis: elegiveis.length };
 }
