@@ -23,7 +23,10 @@ const RECONTACT_DAYS = 7;  // recobra a cada 7 dias
 const HEADER = [
   "sheetId", "nome", "telefone", "status", "ultimoTreino",
   "diasSemTreinar", "ultimoContato", "vezes", "elegivelAgora", "atualizadoEm",
+  "primeiroNome",
 ];
+
+const primeiroNome = (nome) => (String(nome || "").trim().split(/\s+/)[0] || "");
 
 function getCredentials() {
   if (process.env.GOOGLE_CREDENTIALS_JSON) return JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
@@ -160,8 +163,9 @@ export async function runFollowSumidos({ dryRun = false } = {}) {
   const rows = roster.map((s) => [
     s.sheetId, s.nome, s.telefone, s.status, s.ultimoTreino,
     s.diasSemTreinar, s.ultimoContato || "", s.vezes || 0, s.elegivel ? "SIM" : "", today,
+    primeiroNome(s.nome),
   ]);
-  await shRW.spreadsheets.values.clear({ spreadsheetId: SPREADSHEET_ID, range: `${FOLLOW_TAB}!A:J` });
+  await shRW.spreadsheets.values.clear({ spreadsheetId: SPREADSHEET_ID, range: `${FOLLOW_TAB}!A:K` });
   await shRW.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
     range: `${FOLLOW_TAB}!A1`,
