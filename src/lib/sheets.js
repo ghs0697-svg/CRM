@@ -287,7 +287,8 @@ export async function appendStudent(data) {
   const newRow = lastData + 1;
 
   // 2. Escreve EXPLICITAMENTE em A..I da linha nova (alinhado, sem auto-detect).
-  // Colunas calculadas (J/K/L/M/N/O/Q/T/V/X) ficam vazias → ARRAYFORMULAs cobrem.
+  // Colunas ARRAYFORMULA (J/K/L/M/N/Q/T) ficam INTOCADAS — elas calculam a nova
+  // linha sozinhas; cravar valor nelas trava a coluna inteira (K89).
   await sheetsRW.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
     range: `${tab}!A${newRow}:I${newRow}`,
@@ -307,28 +308,25 @@ export async function appendStudent(data) {
     },
   });
 
-  // 3. Carimba T (Peptídeos) / V (Categoria) / X (Renovação?) na linha nova.
-  // Regra GH: por padrão "não adquiriu" (Não / Padrão) — via fórmula derivada
-  // das Tags, igual às demais linhas. Se o form marcar Sim/Black, grava o
-  // override direto (a equipe pode informar na hora do cadastro).
-  // OBS: planilha é pt-BR → separador de fórmula é ';' (NÃO ',').
-  const peptCell = data.peptideos === "Sim"
-    ? "Sim"
-    : `=IF($A${newRow}="";"";IF($S${newRow}="";"Não";IF(REGEXMATCH(LOWER($S${newRow});"pept");"Sim";"Não")))`;
-  const catCell = data.categoria === "Black"
-    ? "Black"
-    : `=IF($A${newRow}="";"";IF($S${newRow}="";"Padrão";IF(REGEXMATCH(LOWER($S${newRow});"black");"Black";"Padrão")))`;
-  const renovCell = `=IF($B${newRow}="";"";IF(COUNTIF($B$2:B${newRow - 1};$B${newRow})>0;"RENOVACAO";""))`;
+  // 3. Carimba SÓ colunas de INPUT, com valor LITERAL. NUNCA toca coluna
+  // ARRAYFORMULA (J/K/L/M/N/Q/T) — cravar um valor numa arrayformula trava a
+  // coluna INTEIRA (#REF!, incidente K89). Schema real da mestre:
+  //  - Peptídeos (T) = ARRAYFORMULA que procura "pept" na coluna S (tags). Pra
+  //    marcar peptídeos, adiciona a tag em S — NUNCA escreve T.
+  //  - Categoria (V) = input literal → grava o valor direto (Padrão/Black).
+  //  - Renovação (X) = fica VAZIA no aluno novo (1ª compra); X=RENOVACAO vem só
+  //    pelo endpoint registrarRenovacao da Mestre (fluxo de renovação).
+  const tagsBase = String(data.tags || "").trim();
+  const peptTag = data.peptideos === "Sim" ? "peptideos" : ""; // T procura "pept" em S
+  const tagsFinal = [tagsBase, peptTag].filter(Boolean).join(", ");
 
   const updates = [
-    { range: `${tab}!T${newRow}`, values: [[peptCell]] },
-    { range: `${tab}!V${newRow}`, values: [[catCell]] },
-    { range: `${tab}!X${newRow}`, values: [[renovCell]] },
+    { range: `${tab}!V${newRow}`, values: [[data.categoria === "Black" ? "Black" : "Padrão"]] },
   ];
-  // Opcionais (P/R/S) só se vierem preenchidos
+  // Opcionais (P/R) só se vierem preenchidos. S leva as tags + a de peptídeos.
   if (data.formaPagamento) updates.push({ range: `${tab}!P${newRow}`, values: [[data.formaPagamento]] });
   if (data.cpf) updates.push({ range: `${tab}!R${newRow}`, values: [[data.cpf]] });
-  if (data.tags) updates.push({ range: `${tab}!S${newRow}`, values: [[data.tags]] });
+  if (tagsFinal) updates.push({ range: `${tab}!S${newRow}`, values: [[tagsFinal]] });
 
   await sheetsRW.spreadsheets.values.batchUpdate({
     spreadsheetId: SPREADSHEET_ID,
