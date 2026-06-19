@@ -5,10 +5,14 @@ import { google } from "googleapis";
 // CONTROLE ALUNOS (por SheetId no link col W) pra pegar telefone + status.
 //
 // Critério (decisão GH): ativo + já treinou pelo app + 7+ dias SEM treinar (sem teto).
-// Cadência: re-dispara a cada 7 dias enquanto seguir sumido ("ficar em cima").
+// Cadência (decisão GH 2026-06-19): UMA mensagem por EPISÓDIO de inatividade. Quando
+// o aluno cruza 7 dias sem treinar, recebe 1 mensagem. Enquanto seguir parado NÃO
+// recebe de novo (mesmo 30 dias seguidos = 1 msg só). Só abre novo episódio (= nova
+// mensagem) se treinar de novo e voltar a sumir 7+ dias. Marcador do episódio:
+// ultimoContato >= ultimoTreino significa que o episódio atual já foi coberto.
 // Envio: o CRM NÃO manda WhatsApp — só mantém a aba. O Make lê as linhas com
 //        elegivelAgora=SIM, dispara via Z-API em drip lento (anti-ban) e carimba
-//        ultimoContato de volta (zera o elegivelAgora por 7 dias = a cadência).
+//        ultimoContato de volta. Isso marca o episódio como coberto (1 msg/episódio).
 //
 // Estado visível na aba FOLLOW_SUMIDOS da mestre (GH audita / edita à mão).
 
@@ -17,8 +21,8 @@ const MASTER_TAB = process.env.GOOGLE_SHEETS_TAB || "CONTROLE ALUNOS";
 const LOGS_TAB = "LOGS";
 const FOLLOW_TAB = "FOLLOW_SUMIDOS";
 
-const IDLE_MIN_DAYS = 7;   // 7+ dias parado entra
-const RECONTACT_DAYS = 7;  // recobra a cada 7 dias
+const IDLE_MIN_DAYS = 7;   // 7+ dias parado entra no roster
+// (sem recontato por tempo: 1 msg por episódio — ver episodioJaContatado)
 
 const HEADER = [
   "sheetId", "nome", "telefone", "status", "ultimoTreino",
@@ -78,6 +82,16 @@ function toE164(raw) {
   if (d.startsWith("55")) return d;
   if (d.length <= 11) return "55" + d; // BR sem DDI escrito
   return d;                            // já tem DDI internacional
+}
+
+// 1 msg por episódio: o episódio atual já foi coberto se o último contato aconteceu
+// DEPOIS (ou no dia) do último treino. Se o aluno treinou de novo (ultimoTreino mais
+// recente que ultimoContato), abre um episódio novo e fica elegível de novo.
+function episodioJaContatado(ultimoContato, ultimoTreino) {
+  if (!ultimoContato) return false;            // nunca contatado -> elegível
+  const c = parseISO(ultimoContato), t = parseISO(ultimoTreino);
+  if (!c || !t) return true;                   // datas estranhas -> conservador (não re-manda)
+  return c >= t;                               // contatado após o último treino = episódio coberto
 }
 
 // Monta o roster: ativos, com treino no app, 7+ dias parados. Ordenado por dias asc.
@@ -156,13 +170,14 @@ export async function runFollowSumidos({ dryRun = false } = {}) {
     if (sid) prevBySid.set(sid, { ultimoContato: String(r[6] || "").trim(), vezes: parseInt(r[7], 10) || 0 });
   }
 
-  // cadência: elegível se nunca contatado OU último contato >= 7 dias
+  // 1 msg por episódio: elegível só se o episódio atual ainda NÃO foi coberto
+  // (nunca contatado, ou treinou de novo depois do último contato e voltou a sumir).
+  // Enquanto seguir parado sem treinar, ultimoContato>=ultimoTreino => não repete.
   for (const s of roster) {
     const p = prevBySid.get(s.sheetId) || { ultimoContato: "", vezes: 0 };
     s.ultimoContato = p.ultimoContato;
     s.vezes = p.vezes;
-    const since = s.ultimoContato ? daysBetween(s.ultimoContato, today) : null;
-    s.elegivel = since == null || since >= RECONTACT_DAYS;
+    s.elegivel = !episodioJaContatado(s.ultimoContato, s.ultimoTreino);
   }
   const elegiveis = roster.filter((s) => s.elegivel);
 
@@ -172,9 +187,10 @@ export async function runFollowSumidos({ dryRun = false } = {}) {
 
   // Grava a aba inteira (header + roster). O CRM NÃO manda WhatsApp: quem manda
   // é o Make, lendo as linhas com elegivelAgora=SIM, disparando via Z-API em drip
-  // e carimbando de volta ultimoContato + vezes (isso zera o elegivelAgora por 7
-  // dias = a cadência). Quem treinou de novo (<7 dias) sai do roster e some da
-  // aba neste ciclo. O ultimoContato/vezes do ciclo anterior é preservado acima.
+  // e carimbando de volta ultimoContato + vezes. Como ultimoContato passa a ser
+  // >= ultimoTreino, o episódio fica coberto e não repete. Quem treinou de novo
+  // (<7 dias) sai do roster; se sumir 7+ de novo, volta SEM contato = novo episódio.
+  // O ultimoContato/vezes do ciclo anterior é preservado acima.
   const rows = roster.map((s) => [
     s.sheetId, s.nome, s.telefone, s.status, s.ultimoTreino,
     s.diasSemTreinar, s.ultimoContato || "", s.vezes || 0, s.elegivel ? "SIM" : "", today,
