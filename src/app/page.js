@@ -352,7 +352,6 @@ function StudentFormModal({ baseRow, onClose, onSuccess }) {
                   <option value="">—</option>
                   <option value="Pix">Pix</option>
                   <option value="Greenn">Greenn</option>
-                  <option value="Cartão">Cartão</option>
                   <option value="Parcelado">Parcelado</option>
                 </select>
               </div>
@@ -567,7 +566,6 @@ function RenovacaoModal({ aluno, onClose, onSuccess }) {
                   <select value={form.formaPagamento} onChange={(e) => update("formaPagamento", e.target.value)}>
                     <option value="Pix">Pix</option>
                     <option value="Greenn">Greenn</option>
-                    <option value="Cartão">Cartão</option>
                     <option value="Parcelado">Parcelado</option>
                   </select>
                 </div>
