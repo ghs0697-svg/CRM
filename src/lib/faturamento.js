@@ -73,3 +73,33 @@ export async function getFaturamentoStats() {
 
   return { receitaTotal, vendasTotal, ticketMedio, mesAtual, porMes, planos, categorias };
 }
+
+// Vendas por DIA (pro filtro de período no painel de métricas).
+// Cada linha da mestre com DATA DE COMPRA (col C) = 1 venda nesse dia.
+// Renovações viram linha nova (duplicada) com sua própria data → contam como venda no dia delas.
+export async function getVendasPorDia() {
+  if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
+  const auth = new google.auth.GoogleAuth({
+    credentials: getCredentials(),
+    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+  });
+  const sheets = google.sheets({ version: "v4", auth });
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB}!A2:V` });
+  const rows = res.data.values || [];
+
+  const porDia = new Map(); // "YYYY-MM-DD" -> { receita, vendas }
+  for (const r of rows) {
+    const m = mDataBR(r[2]); // col C DD/MM/YYYY
+    if (!m) continue;        // sem data válida = não conta
+    const iso = `${m[3]}-${m[2]}-${m[1]}`;
+    const valor = parseMoney(r[8]); // col I
+    const d = porDia.get(iso) || { receita: 0, vendas: 0 };
+    d.vendas += 1;           // cada linha com data = 1 venda
+    d.receita += valor;      // soma valor (0 se vazio)
+    porDia.set(iso, d);
+  }
+  const dias = [...porDia.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([data, v]) => ({ data, receita: v.receita, vendas: v.vendas }));
+  return { dias, atualizado: new Date().toISOString() };
+}

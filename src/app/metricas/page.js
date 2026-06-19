@@ -40,7 +40,8 @@ function parseMoney(v) {
 export default function MetricasPage() {
   const [hydrated, setHydrated] = useState(false);
   const [inputs, setInputs] = useState(DEFAULTS);
-  const [students, setStudents] = useState([]);
+  const [vendasDias, setVendasDias] = useState([]); // [{ data:'YYYY-MM-DD', receita, vendas }] da mestre
+  const [periodo, setPeriodo] = useState({ modo: "30d", inicio: "", fim: "" });
   const [leadsAuto, setLeadsAuto] = useState(null); // { totalLeads, boasVindas, quente, link }
   const [loadError, setLoadError] = useState(null);
 
@@ -68,9 +69,9 @@ export default function MetricasPage() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(inputs)); } catch {}
   }, [inputs, hydrated]);
 
-  // Buscar alunos
+  // Buscar vendas por dia (direto da mestre CONTROLE ALUNOS)
   useEffect(() => {
-    fetch("/api/students", { cache: "no-store" })
+    fetch("/api/faturamento", { cache: "no-store" })
       .then(async (r) => {
         const ct = r.headers.get("content-type") || "";
         if (r.status === 401 || !ct.includes("application/json")) {
@@ -80,7 +81,7 @@ export default function MetricasPage() {
         return r.json();
       })
       .then((j) => {
-        if (j?.ok) setStudents(j.students || []);
+        if (j?.ok) setVendasDias(j.dias || []);
         else if (j?.error) setLoadError(j.error);
       })
       .catch((e) => setLoadError(String(e?.message || e)));
@@ -112,19 +113,37 @@ export default function MetricasPage() {
     setInputs((s) => ({ ...s, [k]: v === "" ? 0 : Number(v) || 0 }));
   };
 
-  // Stats da planilha (mês corrente)
+  // Range de datas efetivo (default: últimos 30 dias)
+  const range = useMemo(() => {
+    if (periodo.modo === "tudo") return { ini: "0000-00-00", fim: "9999-99-99" };
+    if (periodo.modo === "custom" && periodo.inicio && periodo.fim) {
+      return periodo.inicio <= periodo.fim
+        ? { ini: periodo.inicio, fim: periodo.fim }
+        : { ini: periodo.fim, fim: periodo.inicio };
+    }
+    const d = new Date();
+    const fim = d.toISOString().slice(0, 10);
+    d.setDate(d.getDate() - 29);
+    const ini = d.toISOString().slice(0, 10);
+    return { ini, fim };
+  }, [periodo]);
+
+  // Faturado + vendas direto da mestre, filtrados pelo período
   const auto = useMemo(() => {
-    const { monthKey } = todayInfo();
     let faturado = 0, vendas = 0;
-    for (const s of students) {
-      const m = (s.dataCompra || "").match(/(\d{2})\/(\d{4})/);
-      if (m && `${m[1]}/${m[2]}` === monthKey) {
-        faturado += parseMoney(s.totalRec || s.valorPlano);
-        vendas++;
+    for (const dia of vendasDias) {
+      if (dia.data >= range.ini && dia.data <= range.fim) {
+        faturado += dia.receita;
+        vendas += dia.vendas;
       }
     }
     return { faturado, vendas };
-  }, [students]);
+  }, [vendasDias, range]);
+
+  // "Venda no dia" = vendas do período, auto da mestre (overridável)
+  useEffect(() => {
+    setInputs((s) => ({ ...s, vendaNoDia: auto.vendas }));
+  }, [auto.vendas]);
 
   const stats = useMemo(() => {
     const { meta, diasMes, diaAtual, totalLeads } = inputs;
@@ -183,6 +202,36 @@ export default function MetricasPage() {
             <Field label="Dias no mês" value={inputs.diasMes} onChange={update("diasMes")} />
             <Field label="Dia atual" value={inputs.diaAtual} onChange={update("diaAtual")} />
 
+            <SectionTitle style={{ marginTop: 20 }}>Período das vendas</SectionTitle>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {[["30d", "Últimos 30 dias"], ["tudo", "Tudo"], ["custom", "Personalizado"]].map(([k, lbl]) => (
+                <button key={k} type="button" onClick={() => setPeriodo((p) => ({ ...p, modo: k }))}
+                  style={{
+                    padding: "6px 10px", borderRadius: 8, fontSize: 12, cursor: "pointer",
+                    border: "1px solid var(--border, #2a2a30)",
+                    background: periodo.modo === k ? "var(--gold, #d4af37)" : "transparent",
+                    color: periodo.modo === k ? "#111" : "var(--text, #ccc)",
+                    fontWeight: periodo.modo === k ? 700 : 400,
+                  }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            {periodo.modo === "custom" && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <input type="date" value={periodo.inicio} onChange={(e) => setPeriodo((p) => ({ ...p, inicio: e.target.value }))}
+                  style={{ flex: 1, padding: 6, borderRadius: 8, background: "transparent", color: "var(--text, #ccc)", border: "1px solid var(--border, #2a2a30)" }} />
+                <input type="date" value={periodo.fim} onChange={(e) => setPeriodo((p) => ({ ...p, fim: e.target.value }))}
+                  style={{ flex: 1, padding: 6, borderRadius: 8, background: "transparent", color: "var(--text, #ccc)", border: "1px solid var(--border, #2a2a30)" }} />
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: "var(--muted, #888)", marginBottom: 4 }}>
+              {range.ini === "0000-00-00"
+                ? "Todas as vendas"
+                : `${range.ini.split("-").reverse().join("/")} → ${range.fim.split("-").reverse().join("/")}`}
+              {" · "}<strong>{auto.vendas}</strong> vendas · {fmtBRL(auto.faturado)}
+            </div>
+
             <SectionTitle style={{ marginTop: 20 }}>
               Funil do mês {leadsAuto && <span style={{ fontWeight: 400, textTransform: "none", color: "var(--gold)", marginLeft: 6 }}>auto</span>}
             </SectionTitle>
@@ -190,7 +239,7 @@ export default function MetricasPage() {
             <Field label="1ª pergunta respondida" value={inputs.primeiraPergunta} onChange={update("primeiraPergunta")} auto={!!leadsAuto} />
             <Field label="Oferta feita (QUENTE)" value={inputs.ofertaFeita} onChange={update("ofertaFeita")} auto={!!leadsAuto} />
             <Field label="Link enviado" value={inputs.link} onChange={update("link")} auto={!!leadsAuto} />
-            <Field label="Venda no dia" value={inputs.vendaNoDia} onChange={update("vendaNoDia")} />
+            <Field label="Venda no dia (período)" value={inputs.vendaNoDia} onChange={update("vendaNoDia")} auto />
             <Field label="Follow-up convertido" value={inputs.followUp} onChange={update("followUp")} />
 
             <div className={styles.helper}>
