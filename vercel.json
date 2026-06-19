@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/fire-followups",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/follow-sumidos",
+      "schedule": "0 13 * * *"
     }
   ]
 }
