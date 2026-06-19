@@ -23,10 +23,25 @@ const RECONTACT_DAYS = 7;  // recobra a cada 7 dias
 const HEADER = [
   "sheetId", "nome", "telefone", "status", "ultimoTreino",
   "diasSemTreinar", "ultimoContato", "vezes", "elegivelAgora", "atualizadoEm",
-  "primeiroNome",
+  "primeiroNome", "mensagem",
 ];
 
 const primeiroNome = (nome) => (String(nome || "").trim().split(/\s+/)[0] || "");
+
+// Mensagem pronta (sem nome). 3 variações; o CRM já escolhe uma por linha pra
+// o Make não precisar de fórmula nenhuma. Sem aspas duplas (JSON-safe).
+const MENSAGENS = [
+  "Opa! 👊 Reparei que faz uns dias que tu não aparece no aplicativo. Tá tudo certo aí? Se travou em algo (correria, lesão, dúvida no protocolo) me conta que a gente resolve. Bora não perder o ritmo! 💪",
+  "E aí! Passando pra saber de ti, sumiu do treino esses dias. Aconteceu alguma coisa? Se precisar ajustar treino ou dieta, ou tiver com dificuldade, é só falar. Tamo junto! 🔥",
+  "Fala! 👀 Cadê os treinos? Me dá um sinal de vida, tá tudo certo? Qualquer coisa que tá te segurando, manda aqui que a gente desenrola. Não deixa o shape esfriar! 💪",
+];
+// rotação determinística: varia por aluno (hash do sheetId) e a cada re-contato (vezes)
+function pickMensagem(sheetId, vezes) {
+  const s = String(sheetId || "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h += s.charCodeAt(i);
+  return MENSAGENS[(h + (parseInt(vezes, 10) || 0)) % MENSAGENS.length];
+}
 
 function getCredentials() {
   if (process.env.GOOGLE_CREDENTIALS_JSON) return JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
@@ -163,9 +178,9 @@ export async function runFollowSumidos({ dryRun = false } = {}) {
   const rows = roster.map((s) => [
     s.sheetId, s.nome, s.telefone, s.status, s.ultimoTreino,
     s.diasSemTreinar, s.ultimoContato || "", s.vezes || 0, s.elegivel ? "SIM" : "", today,
-    primeiroNome(s.nome),
+    primeiroNome(s.nome), pickMensagem(s.sheetId, s.vezes),
   ]);
-  await shRW.spreadsheets.values.clear({ spreadsheetId: SPREADSHEET_ID, range: `${FOLLOW_TAB}!A:K` });
+  await shRW.spreadsheets.values.clear({ spreadsheetId: SPREADSHEET_ID, range: `${FOLLOW_TAB}!A:L` });
   await shRW.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
     range: `${FOLLOW_TAB}!A1`,
