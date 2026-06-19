@@ -57,15 +57,15 @@ export default async function QuizPage() {
           {data && (
             <>
               <div className={styles.cards}>
-                <Card label="Sessões totais" value={data.totalSessions.toLocaleString("pt-BR")} />
-                <Card label="Iniciaram (etapa 1)" value={data.iniciaram.toLocaleString("pt-BR")} />
-                <Card label="Concluíram" value={data.concluiram.toLocaleString("pt-BR")} />
-                <Card label="Conclusão (de quem iniciou)" value={`${data.taxaConclusao.toFixed(1).replace(".", ",")}%`} />
+                <Card label="Iniciaram o quiz" value={data.iniciaram.toLocaleString("pt-BR")} />
+                <Card label="Chegaram no resultado" value={data.concluiram.toLocaleString("pt-BR")} />
+                <Card label="Taxa de conclusão" value={`${data.taxaConclusao.toFixed(1).replace(".", ",")}%`} />
+                <Card label="Clicou no WhatsApp" value={`${data.waCount.toLocaleString("pt-BR")} (${data.conversaoWa.toFixed(1).replace(".", ",")}%)`} />
               </div>
 
-              <Section title={`Funil por etapa (${data.maxEtapa} etapas)`}>
+              <Section title="Funil do quiz (modelo atual)">
                 {data.funil.map((f) => (
-                  <Bar key={f.etapa} label={`Etapa ${f.etapa}`} count={f.sessoes} pct={f.pct} max={100} />
+                  <Bar key={f.key} label={f.label} count={f.sessoes} pct={f.pct} max={100} />
                 ))}
               </Section>
 
