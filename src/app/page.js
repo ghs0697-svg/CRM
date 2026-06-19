@@ -399,6 +399,214 @@ function StudentFormModal({ baseRow, onClose, onSuccess }) {
   );
 }
 
+// Renovação de aluno existente. Diferente do "Novo aluno": NÃO grava direto na
+// mestre — chama os endpoints da planilha MESTRE (server-side, via /api/renovacao):
+// pré-preenche pela fonte de verdade (alunoConsolidado) e registra a linha nova
+// pelo registrarRenovacao (idempotente, link na linha ativa, versão atual mantida).
+function RenovacaoModal({ aluno, onClose, onSuccess }) {
+  const cpf = aluno?.cpf || "";
+  const phone = extractDigits(aluno?.contato) || "";
+
+  const [loading, setLoading] = useState(true);
+  const [cons, setCons] = useState(null);
+  const [loadErr, setLoadErr] = useState(null);
+  const [form, setForm] = useState({
+    tipoPlano: aluno?.tipoPlano || "Semestral",
+    valorPlano: "",
+    formaPagamento: aluno?.formaPagamento || "Pix",
+    protocoloHormonal: aluno?.protocoloHormonal || "Não",
+    peptideos: aluno?.peptideos || "Não",
+    categoria: aluno?.categoria || "Padrão",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(null);
+
+  const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Pré-preenche pela fonte de verdade (alunoConsolidado agrupa linhas duplicadas).
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true);
+      setLoadErr(null);
+      if (!cpf && !phone) {
+        setLoadErr("Aluno sem CPF nem telefone no cadastro — não dá pra identificar na mestre.");
+        setLoading(false);
+        return;
+      }
+      try {
+        const qs = new URLSearchParams(cpf ? { cpf } : { phone }).toString();
+        const res = await fetch(`/api/renovacao?${qs}`, { cache: "no-store" });
+        const json = await res.json();
+        if (cancel) return;
+        if (json.ok && json.found) {
+          setCons(json);
+          setForm((f) => ({
+            ...f,
+            tipoPlano: json.plano || f.tipoPlano,
+            protocoloHormonal: json.hormonal || f.protocoloHormonal,
+            peptideos: json.peptideos || f.peptideos,
+            categoria: json.categoria || f.categoria,
+          }));
+        } else if (json.ok && !json.found) {
+          setLoadErr("Aluno não encontrado na mestre por CPF/telefone. Confira o cadastro antes de renovar.");
+        } else {
+          setLoadErr(json.error || "Falha ao buscar o aluno na mestre.");
+        }
+      } catch (e) {
+        if (!cancel) setLoadErr(e.message || String(e));
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [cpf, phone]);
+
+  async function submit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/renovacao", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          cpf,
+          phone,
+          plano: form.tipoPlano,
+          valor: form.valorPlano,
+          forma: form.formaPagamento,
+          hormonal: form.protocoloHormonal,
+          peptideos: form.peptideos,
+          categoria: form.categoria,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setDone(json);
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const nRenov = Array.isArray(cons?.historico)
+    ? cons.historico.filter((h) => /renov/i.test(h.tipo || "")).length
+    : 0;
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}>
+          <span className={styles.modalTitle}>📋 Renovação — {aluno?.nome || "—"}</span>
+          <button className={styles.drawerClose} onClick={onClose}>✕</button>
+        </div>
+
+        {done ? (
+          <>
+            <div className={styles.modalBody}>
+              <div style={{ padding: "12px 14px", background: "var(--done-bg, #ecfdf5)", color: "var(--done-text, #047857)", borderRadius: 8, fontSize: "0.9rem" }}>
+                {done.duplicate
+                  ? "✓ Já havia uma renovação registrada hoje (não duplicou)."
+                  : "✓ Renovação registrada na mestre."}
+                <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                  {done.linha ? `Linha ${done.linha}. ` : ""}
+                  {done.versao ? `Versão atual mantida: ${done.versao}. ` : ""}
+                  {done.linkOk === false ? "⚠ Conferir link na linha ativa." : ""}
+                </div>
+                <div style={{ marginTop: 8, fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                  A versão sobe quando o aluno responder a anamnese de renovação (Entregas monta o protocolo novo).
+                </div>
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btnPrimary} onClick={() => onSuccess?.(done)}>Fechar e atualizar</button>
+            </div>
+          </>
+        ) : (
+          <form onSubmit={submit}>
+            <div className={styles.modalBody}>
+              {loading && <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: 8 }}>Carregando dados do aluno…</div>}
+              {loadErr && <div className={styles.formError}>{loadErr}</div>}
+              {error && <div className={styles.formError}>{error}</div>}
+
+              {cons && (
+                <div style={{ padding: "10px 12px", background: "var(--surface-2, #f3f4f6)", borderRadius: 8, fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: 12 }}>
+                  Ciclo atual: <strong style={{ color: "var(--text-main)" }}>{cons.plano || "—"}</strong>
+                  {" · "}versão <strong style={{ color: "var(--text-main)" }}>{cons.versaoAtual || "—"}</strong>
+                  {" · "}vence {cons.vencimento || "—"}
+                  {" · "}{cons.status || "—"}
+                  {nRenov > 0 ? ` · ${nRenov + 1}ª renovação` : ""}
+                </div>
+              )}
+
+              <div className={styles.formRow}>
+                <div className={styles.formField}>
+                  <label>Novo plano</label>
+                  <select value={form.tipoPlano} onChange={(e) => update("tipoPlano", e.target.value)}>
+                    <option value="Trimestral">Trimestral</option>
+                    <option value="Semestral">Semestral</option>
+                    <option value="Anual">Anual</option>
+                  </select>
+                </div>
+                <div className={styles.formField}>
+                  <label>Valor (R$) *</label>
+                  <input value={form.valorPlano} onChange={(e) => update("valorPlano", e.target.value)} placeholder="697" required />
+                </div>
+              </div>
+              <div className={styles.formRow}>
+                <div className={styles.formField}>
+                  <label>Forma de Pagamento</label>
+                  <select value={form.formaPagamento} onChange={(e) => update("formaPagamento", e.target.value)}>
+                    <option value="Pix">Pix</option>
+                    <option value="Greenn">Greenn</option>
+                    <option value="Cartão">Cartão</option>
+                    <option value="Parcelado">Parcelado</option>
+                  </select>
+                </div>
+                <div className={styles.formField}>
+                  <label>Categoria</label>
+                  <select value={form.categoria} onChange={(e) => update("categoria", e.target.value)}>
+                    <option value="Padrão">Padrão</option>
+                    <option value="Black">Black</option>
+                  </select>
+                </div>
+              </div>
+              <div className={styles.formRow}>
+                <div className={styles.formField}>
+                  <label>Hormonal?</label>
+                  <select value={form.protocoloHormonal} onChange={(e) => update("protocoloHormonal", e.target.value)}>
+                    <option value="Não">Não</option>
+                    <option value="Sim">Sim</option>
+                  </select>
+                </div>
+                <div className={styles.formField}>
+                  <label>Peptídeos?</label>
+                  <select value={form.peptideos} onChange={(e) => update("peptideos", e.target.value)}>
+                    <option value="Não">Não</option>
+                    <option value="Sim">Sim</option>
+                  </select>
+                </div>
+              </div>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 8 }}>
+                💡 A planilha mestre cria a linha nova nascendo certa: link na linha ativa, versão atual mantida e sem duplicar. Vencimento e status são automáticos.
+              </p>
+            </div>
+            <div className={styles.modalFooter}>
+              <button type="button" className={styles.btnSecondary} onClick={onClose}>Cancelar</button>
+              <button type="submit" className={styles.btnPrimary} disabled={submitting || loading || !!loadErr}>
+                {submitting ? "Registrando…" : "Registrar renovação"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function EditableField({ field, value, onChange }) {
   const cfg = EDIT_FIELD_CONFIG[field];
   if (!cfg) return null;
@@ -606,8 +814,8 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
             </button>
 
             {renovacaoOpen && (
-              <StudentFormModal
-                baseRow={row}
+              <RenovacaoModal
+                aluno={row}
                 onClose={() => setRenovacaoOpen(false)}
                 onSuccess={(result) => {
                   setRenovacaoOpen(false);
