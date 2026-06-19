@@ -445,6 +445,8 @@ function RenovacaoModal({ aluno, onClose, onSuccess }) {
           setForm((f) => ({
             ...f,
             tipoPlano: json.plano || f.tipoPlano,
+            // pré-preenche o valor do ciclo anterior (igual à pág. do Apps Script) — editável
+            valorPlano: json.valor != null && String(json.valor).trim() !== "" ? String(json.valor) : f.valorPlano,
             protocoloHormonal: json.hormonal || f.protocoloHormonal,
             peptideos: json.peptideos || f.peptideos,
             categoria: json.categoria || f.categoria,
@@ -514,6 +516,7 @@ function RenovacaoModal({ aluno, onClose, onSuccess }) {
                 <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--text-muted)" }}>
                   {done.linha ? `Linha ${done.linha}. ` : ""}
                   {done.versao ? `Versão atual mantida: ${done.versao}. ` : ""}
+                  {done.proximaVersao ? `Entregas entrega a v${done.proximaVersao}. ` : ""}
                   {done.linkOk === false ? "⚠ Conferir link na linha ativa." : ""}
                 </div>
                 <div style={{ marginTop: 8, fontSize: "0.78rem", color: "var(--text-muted)" }}>
@@ -536,6 +539,7 @@ function RenovacaoModal({ aluno, onClose, onSuccess }) {
                 <div style={{ padding: "10px 12px", background: "var(--surface-2, #f3f4f6)", borderRadius: 8, fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: 12 }}>
                   Ciclo atual: <strong style={{ color: "var(--text-main)" }}>{cons.plano || "—"}</strong>
                   {" · "}versão <strong style={{ color: "var(--text-main)" }}>{cons.versaoAtual || "—"}</strong>
+                  {cons.proximaVersao ? ` (próxima v${cons.proximaVersao})` : ""}
                   {" · "}vence {cons.vencimento || "—"}
                   {" · "}{cons.status || "—"}
                   {nRenov > 0 ? ` · ${nRenov + 1}ª renovação` : ""}
@@ -549,6 +553,7 @@ function RenovacaoModal({ aluno, onClose, onSuccess }) {
                     <option value="Trimestral">Trimestral</option>
                     <option value="Semestral">Semestral</option>
                     <option value="Anual">Anual</option>
+                    <option value="Mensal">Mensal</option>
                   </select>
                 </div>
                 <div className={styles.formField}>
@@ -881,6 +886,7 @@ export default function Home() {
   const [filterInsight, setFilterInsight] = useState(null); // null | "suporte" | "produto" | "reajuste"
   const [search, setSearch] = useState("");
   const [novoAlunoOpen, setNovoAlunoOpen] = useState(false);
+  const [renovarRow, setRenovarRow] = useState(null); // renovação direto da linha (coluna Ação)
 
   useEffect(() => {
     try {
@@ -1239,10 +1245,22 @@ export default function Home() {
                       <td>{row.tipoPlano || <span className={styles.muted}>—</span>}</td>
                       <td>{row.dataVencimento || <span className={styles.muted}>—</span>}</td>
                       <td><StatusBadge value={row.statusPlano} /></td>
-                      <td>
-                        {row.acaoNecessaria
-                          ? <span className={row.acaoNecessaria === "OK" ? styles.actionOk : styles.actionRequired}>{row.acaoNecessaria}</span>
-                          : <span className={styles.muted}>—</span>}
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
+                          {row.acaoNecessaria
+                            ? <span className={row.acaoNecessaria === "OK" ? styles.actionOk : styles.actionRequired}>{row.acaoNecessaria}</span>
+                            : <span className={styles.muted}>—</span>}
+                          {row._rowIndex && (
+                            <button
+                              type="button"
+                              onClick={() => setRenovarRow(row)}
+                              title="Registrar renovação deste aluno"
+                              style={{ background: "transparent", border: "1px solid var(--gold)", color: "var(--gold)", borderRadius: 6, padding: "3px 9px", fontSize: "0.72rem", fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                            >
+                              🔄 Renovar
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1273,6 +1291,14 @@ export default function Home() {
             setNovoAlunoOpen(false);
             load();
           }}
+        />
+      )}
+
+      {renovarRow && (
+        <RenovacaoModal
+          aluno={renovarRow}
+          onClose={() => setRenovarRow(null)}
+          onSuccess={() => { setRenovarRow(null); load(); }}
         />
       )}
     </div>
