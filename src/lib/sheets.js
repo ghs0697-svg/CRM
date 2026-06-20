@@ -180,6 +180,27 @@ export function phoneSuffixMatch(a, b) {
   return da.length >= db.length ? da.slice(-db.length) === db : db.slice(-da.length) === da;
 }
 
+// Índice 0-based de coluna → letra (0→A, 25→Z, 26→AA). Pra escrever numa coluna
+// achada por header (não por letra fixa, que muda quando a planilha cresce).
+function colLetter(n) {
+  let s = "";
+  n = n + 1;
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+// Data de hoje no fuso BRT, formato DD/MM/YYYY (igual às datas da mestre).
+function todayBR() {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit", month: "2-digit", year: "numeric",
+  }).format(new Date());
+}
+
 /**
  * Notas de perfil dos alunos (aba NOTAS_SUPORTE da planilha mestre).
  * A Telefone (só dígitos) | B Nome | C Perfil/Nota (multilinha, já formatado) |
@@ -260,26 +281,44 @@ export async function appendStudent(data) {
   const digits = String(data.contato).replace(/\D/g, "");
   const contatoUrl = digits ? `https://wa.me/${digits}` : data.contato;
 
-  // 1. Acha a ÚLTIMA LINHA REAL pela coluna A (nome).
-  // NÃO usar values.append: ele auto-detecta a "tabela" (linha E coluna
-  // iniciais) e, se houver fórmula/lixo abaixo dos dados, escreve na linha
-  // errada e até desloca a coluna (nome caía na col G). Aqui lemos a col A e
-  // escrevemos EXPLICITAMENTE em A..I da linha seguinte ao último bloco
-  // contíguo — robusto a vãos/fórmulas abaixo dos dados.
-  const colARes = await sheetsRW.spreadsheets.values.get({
+  // Lê A..R uma vez: serve tanto pra DEDUP (telefone B / CPF R) quanto pra achar
+  // a última linha (col A). NÃO usar values.append: ele auto-detecta a "tabela" e,
+  // se houver fórmula/lixo abaixo dos dados, escreve na linha errada e até desloca
+  // a coluna (nome caía na col G). Escrevemos EXPLICITAMENTE na linha seguinte ao
+  // último bloco contíguo — robusto a vãos/fórmulas abaixo dos dados.
+  const rowsRes = await sheetsRW.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${tab}!A2:A`,
+    range: `${tab}!A2:R`,
   });
-  const colA = colARes.data.values || [];
+  const rows = rowsRes.data.values || [];
+
+  // IDEMPOTÊNCIA (anti duplo-clique / retry): se já existe linha com o MESMO
+  // telefone (sufixo) ou MESMO CPF, NÃO cria outra — devolve a existente. Evita a
+  // entrada dupla tipo Guilherme Borotta L869/L870 (#147 da Sala). Renovação é
+  // outro fluxo (registrarRenovacao), então aqui telefone repetido = duplicata.
+  const cpfNew = String(data.cpf || "").replace(/\D/g, "");
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const nm = String(r[0] || "").trim();
+    if (!nm) continue;
+    const existePhone = String(r[1] || "").replace(/\D/g, "");
+    const existeCpf = String(r[17] || "").replace(/\D/g, "");
+    const phoneHit = digits.length >= 8 && existePhone.length >= 8 && phoneSuffixMatch(digits, existePhone);
+    const cpfHit = cpfNew.length >= 11 && existeCpf === cpfNew;
+    if (phoneHit || cpfHit) {
+      return { row: i + 2, contato: contatoUrl, duplicate: true, matchedBy: phoneHit ? "telefone" : "CPF", existingNome: nm };
+    }
+  }
+
   let lastData = 1; // linha 1 = cabeçalho
-  for (let i = 0; i < colA.length; i++) {
-    if (String((colA[i] || [])[0] || "").trim() !== "") {
+  for (let i = 0; i < rows.length; i++) {
+    if (String((rows[i] || [])[0] || "").trim() !== "") {
       lastData = i + 2;
     } else {
       // vão de >=20 linhas vazias seguidas = fim do bloco de dados
       let gap = true;
-      for (let k = i; k < i + 20 && k < colA.length; k++) {
-        if (String((colA[k] || [])[0] || "").trim() !== "") { gap = false; break; }
+      for (let k = i; k < i + 20 && k < rows.length; k++) {
+        if (String((rows[k] || [])[0] || "").trim() !== "") { gap = false; break; }
       }
       if (gap) break;
     }
@@ -464,4 +503,70 @@ export async function deleteStudent(rowNumber, expectedName) {
   });
 
   return { row: rowNumber, deletedName: curNome };
+}
+
+/**
+ * Cancela (ou reativa) o plano do aluno escrevendo SÓ a coluna-input
+ * "Cancelado em" da mestre — o switch de cancelamento (contrato #151 da Sala).
+ * A col K (status) é fórmula da Mestre e emite "Cancelado" quando essa data está
+ * preenchida; o app bloqueia via planStatus_. NUNCA toca coluna-fórmula.
+ * Acha a coluna pelo HEADER (linha 1), não por letra fixa — robusto a posição.
+ * Reversível: uncancel limpa a data (K volta a Ativo/Vencido por data).
+ *
+ * @param {number} rowNumber 1-based (vem de _rowIndex)
+ * @param {string} expectedName proteção contra deslocamento de linha
+ * @param {object} [opts] { uncancel:boolean }
+ */
+export async function cancelStudent(rowNumber, expectedName, { uncancel = false } = {}) {
+  if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
+  if (!Number.isInteger(rowNumber) || rowNumber < 2) throw new Error("row inválido");
+
+  const { google } = await import("googleapis");
+  const auth = new google.auth.GoogleAuth({
+    credentials: getCredentials(),
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+  const sheetsRW = google.sheets({ version: "v4", auth });
+  const tab = TAB || "CONTROLE ALUNOS";
+  const norm = (s) => String(s || "").trim().toLowerCase();
+
+  // 1. Acha a coluna "Cancelado em" pelo HEADER (nunca letra fixa). Casa por
+  //    "cancelad" (cobre "Cancelado em" / "Cancelamento"). Nenhuma coluna-fórmula
+  //    da mestre tem isso no header, então não há risco de cravar numa arrayformula.
+  const headerRes = await sheetsRW.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${tab}!1:1`,
+  });
+  const headers = (headerRes.data.values || [])[0] || [];
+  const colIdx = headers.findIndex((h) => norm(h).includes("cancelad"));
+  if (colIdx < 0) {
+    const e = new Error('a coluna "Cancelado em" ainda não existe na mestre — a Mestre precisa criar antes de cancelar pelo CRM.');
+    e.code = "NO_CANCEL_COLUMN";
+    throw e;
+  }
+  const col = colLetter(colIdx);
+
+  // 2. Segurança: confere o nome atual da linha (proteção contra deslocamento).
+  const cur = await sheetsRW.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${tab}!A${rowNumber}`,
+  });
+  const curNome = String(cur.data.values?.[0]?.[0] || "").trim();
+  if (!curNome) throw new Error("a linha está vazia");
+  if (expectedName != null && String(expectedName).trim() !== "" && norm(curNome) !== norm(expectedName)) {
+    const e = new Error(`a linha mudou (esperava "${expectedName}", achei "${curNome}"). Atualize a lista e tente de novo.`);
+    e.code = "ROW_MISMATCH";
+    throw e;
+  }
+
+  // 3. Escreve SÓ essa coluna-input. Cancelar = data de hoje; reativar = vazio.
+  const value = uncancel ? "" : todayBR();
+  await sheetsRW.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${tab}!${col}${rowNumber}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [[value]] },
+  });
+
+  return { row: rowNumber, nome: curNome, col, cancelado: !uncancel, data: value };
 }

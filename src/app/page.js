@@ -288,6 +288,14 @@ function StudentFormModal({ baseRow, onClose, onSuccess }) {
       });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      if (json.duplicate) {
+        setError(
+          `⚠️ Já existe aluno com esse ${json.matchedBy || "telefone"} na planilha` +
+          (json.existingNome ? ` ("${json.existingNome}", linha ${json.row})` : ` (linha ${json.row})`) +
+          `. Não criei linha nova. Se for renovação, usa "Nova renovação".`
+        );
+        return;
+      }
       onSuccess(json);
     } catch (err) {
       setError(err.message || String(err));
@@ -645,6 +653,37 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+
+  // Cancelar/reativar o plano = escreve só a coluna "Cancelado em" na mestre
+  // (o app bloqueia via status). Não apaga nada; reversível. Substitui o
+  // delete/des-compartilha na mão (contrato #151 da Sala).
+  async function handleCancelToggle(uncancel) {
+    if (!row?._rowIndex) return;
+    const ok = window.confirm(
+      uncancel
+        ? `Reativar o plano de "${row.nome}"?\n\nLimpa a data de cancelamento na mestre — o acesso volta conforme o vencimento.`
+        : `Cancelar o plano de "${row.nome}"?\n\nO app bloqueia o acesso na hora e ele sai das renovações automáticas. O protocolo NÃO é apagado (fica guardado) e dá pra reverter depois.`
+    );
+    if (!ok) return;
+    setCanceling(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/alunos/${row._rowIndex}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: uncancel ? "uncancel" : "cancel", nome: row.nome || "" }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      onClose();
+      onEditSuccess?.();
+    } catch (err) {
+      setEditError(err.message || String(err));
+    } finally {
+      setCanceling(false);
+    }
+  }
 
   async function handleDelete() {
     if (!row?._rowIndex) return;
@@ -826,6 +865,31 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
                 }}
               />
             )}
+
+            {row._rowIndex && (() => {
+              const cancelado = String(row.statusPlano || "").trim().toLowerCase() === "cancelado";
+              return (
+                <button
+                  onClick={() => handleCancelToggle(cancelado)}
+                  disabled={canceling}
+                  title={cancelado
+                    ? "Reativa o plano (limpa a data de cancelamento na mestre)"
+                    : "Marca Cancelado na mestre — bloqueia o app na hora, reversível, não apaga nada"}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    width: "calc(100% - 48px)", margin: "0 24px 8px",
+                    padding: "10px 14px", borderRadius: 8,
+                    fontSize: "0.85rem", fontWeight: 600,
+                    cursor: canceling ? "default" : "pointer", opacity: canceling ? 0.6 : 1,
+                    background: "transparent",
+                    color: cancelado ? "var(--text-muted)" : "var(--overdue)",
+                    border: `1px solid ${cancelado ? "var(--text-muted)" : "var(--overdue)"}`,
+                  }}
+                >
+                  {canceling ? "…" : cancelado ? "↩️ Reativar plano" : "🚫 Cancelar plano do aluno"}
+                </button>
+              );
+            })()}
 
             <div className={styles.drawerBody}>
               {DETAIL_GROUPS.map((group) => (
