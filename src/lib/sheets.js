@@ -72,6 +72,50 @@ function rowToObject(row, sheetRowNumber) {
   return obj;
 }
 
+// Telefone canônico BR pra agrupar a mesma pessoa: dígitos, sem 55 (país) e sem o
+// 9 do móvel → DDD+8. Estrangeiro (sem 55) fica como está. (telefone sozinho colide,
+// por isso o agrupamento exige também o 1º nome — ver suppressRenovados)
+function canonPhone(raw) {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (d.startsWith("55")) d = d.slice(2);
+  if (d.length === 11 && d[2] === "9") d = d.slice(0, 2) + d.slice(3);
+  return d;
+}
+const firstNameKey = (nome) =>
+  String(nome || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/\s+/)[0] || "";
+function vencMs(s) {
+  const m = String(s || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? new Date(+m[3], +m[2] - 1, +m[1]).getTime() : NaN;
+}
+
+/**
+ * Esconde a linha ANTIGA (Vencido) de quem RENOVOU. Aluno renovado tem 2+ linhas
+ * (1ª vencida + renovação ativa, ambas ficam na mestre). Se a MESMA pessoa (mesmo
+ * telefone canônico + mesmo 1º nome — telefone sozinho colide, ex: 7 pessoas no
+ * mesmo número) tem uma linha ATIVA com vencimento POSTERIOR, o plano atual está
+ * rodando → a vencida velha NÃO aparece nem conta como Vencido. Espelha o
+ * planStatus_ do app (prioriza qualquer Ativa). Só mexe em linhas Vencido; Ativo/
+ * Cancelado/etc. passam intactos. Sem telefone confiável (<8 díg) não agrupa.
+ * Regra GH 2026-06-22 (aluno renovado não pode cair na aba de Vencidos).
+ */
+function suppressRenovados(objs) {
+  const ativos = [];
+  for (const s of objs) {
+    if (s.statusPlano !== "Ativo") continue;
+    const ph = canonPhone(s.contato);
+    if (ph.length >= 8) ativos.push({ key: ph + "|" + firstNameKey(s.nome), venc: vencMs(s.dataVencimento) });
+  }
+  if (!ativos.length) return objs;
+  return objs.filter((s) => {
+    if (s.statusPlano !== "Vencido") return true;
+    const ph = canonPhone(s.contato);
+    if (ph.length < 8) return true;
+    const key = ph + "|" + firstNameKey(s.nome);
+    const myV = vencMs(s.dataVencimento);
+    return !ativos.some((a) => a.key === key && (Number.isNaN(myV) || (!Number.isNaN(a.venc) && a.venc > myV)));
+  });
+}
+
 export async function getStudents() {
   if (!SPREADSHEET_ID) {
     throw new Error("GOOGLE_SHEETS_ID não definido em .env.local");
@@ -84,11 +128,11 @@ export async function getStudents() {
     dateTimeRenderOption: "FORMATTED_STRING",
   });
   const rows = res.data.values || [];
-  return rows
+  const objs = rows
     .map((r, i) => ({ row: r, sheetRowNumber: i + 2 }))
     .filter(({ row }) => Array.isArray(row) && row.some((c) => c !== "" && c !== undefined))
-    .map(({ row, sheetRowNumber }) => rowToObject(row, sheetRowNumber))
-    .reverse();
+    .map(({ row, sheetRowNumber }) => rowToObject(row, sheetRowNumber));
+  return suppressRenovados(objs).reverse();
 }
 
 // Lê uma aba inteira (sem cabeçalho) da MESMA planilha mestre. Tolera aba
