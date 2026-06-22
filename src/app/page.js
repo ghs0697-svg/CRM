@@ -654,6 +654,37 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
   const [editError, setEditError] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [canceling, setCanceling] = useState(false);
+  const [pausing, setPausing] = useState(false);
+
+  // Pausar/retomar o plano = congelamento (viagem/acidente). Escreve só colunas-input
+  // ("Pausado em" / "Dias extras") na mestre; o app bloqueia via status "Pausado" e ao
+  // retomar os dias parados entram no vencimento. Contrato #201/#203 da Sala.
+  async function handlePauseToggle(resume) {
+    if (!row?._rowIndex) return;
+    const ok = window.confirm(
+      resume
+        ? `Retomar o plano de "${row.nome}"?\n\nO acesso volta e os dias que ficou parado são somados ao vencimento — ele não perde o tempo pausado.`
+        : `Pausar o plano de "${row.nome}"?\n\nO app bloqueia o acesso enquanto pausado (viagem/acidente). Quando você Retomar, os dias parados são creditados no vencimento. Não perde nada e dá pra reverter.`
+    );
+    if (!ok) return;
+    setPausing(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/alunos/${row._rowIndex}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: resume ? "resume" : "pause", nome: row.nome || "" }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      onClose();
+      onEditSuccess?.();
+    } catch (err) {
+      setEditError(err.message || String(err));
+    } finally {
+      setPausing(false);
+    }
+  }
 
   // Cancelar/reativar o plano = escreve só a coluna "Cancelado em" na mestre
   // (o app bloqueia via status). Não apaga nada; reversível. Substitui o
@@ -887,6 +918,31 @@ function Drawer({ row, onClose, onRenovacaoSuccess, onEditSuccess }) {
                   }}
                 >
                   {canceling ? "…" : cancelado ? "↩️ Reativar plano" : "🚫 Cancelar plano do aluno"}
+                </button>
+              );
+            })()}
+
+            {row._rowIndex && (() => {
+              const st = String(row.statusPlano || "").trim().toLowerCase();
+              if (st === "cancelado") return null; // cancelado é terminal, não oferece pausar
+              const pausado = st === "pausado";
+              return (
+                <button
+                  onClick={() => handlePauseToggle(pausado)}
+                  disabled={pausing}
+                  title={pausado
+                    ? "Retoma o plano e credita os dias parados no vencimento"
+                    : "Pausa o plano (viagem/acidente): bloqueia o app; ao retomar credita os dias parados. Reversível."}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    width: "calc(100% - 48px)", margin: "0 24px 8px",
+                    padding: "10px 14px", borderRadius: 8,
+                    fontSize: "0.85rem", fontWeight: 600,
+                    cursor: pausing ? "default" : "pointer", opacity: pausing ? 0.6 : 1,
+                    background: "transparent", color: "var(--gold)", border: "1px solid var(--gold)",
+                  }}
+                >
+                  {pausing ? "…" : pausado ? "▶ Retomar plano" : "⏸ Pausar plano"}
                 </button>
               );
             })()}

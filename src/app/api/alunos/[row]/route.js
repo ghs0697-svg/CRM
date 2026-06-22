@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { updateStudent, deleteStudent, cancelStudent } from "@/lib/sheets";
+import { updateStudent, deleteStudent, cancelStudent, pauseStudent } from "@/lib/sheets";
 import { auth } from "@/auth";
 
 export const runtime = "nodejs";
@@ -19,12 +19,23 @@ export async function POST(req, { params }) {
       return NextResponse.json({ ok: false, error: "row inválido" }, { status: 400 });
     }
     const body = await req.json().catch(() => ({}));
-    const uncancel = body.action === "uncancel";
-    const result = await cancelStudent(rowNum, body.nome || "", { uncancel });
-    console.log(`[POST /api/alunos/${row}] ${session.user.email} ${uncancel ? "reativou" : "cancelou"} "${result.nome}"`);
+    const action = body.action;
+    let result, verbo;
+    if (action === "pause" || action === "resume") {
+      result = await pauseStudent(rowNum, body.nome || "", { resume: action === "resume" });
+      verbo = action === "resume" ? "retomou" : "pausou";
+    } else {
+      const uncancel = action === "uncancel";
+      result = await cancelStudent(rowNum, body.nome || "", { uncancel });
+      verbo = uncancel ? "reativou" : "cancelou";
+    }
+    console.log(`[POST /api/alunos/${row}] ${session.user.email} ${verbo} "${result.nome}"`);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    const status = err?.code === "ROW_MISMATCH" ? 409 : err?.code === "NO_CANCEL_COLUMN" ? 422 : 400;
+    const c = err?.code;
+    const status = c === "ROW_MISMATCH" || c === "ALREADY_PAUSED" ? 409
+      : c === "NO_CANCEL_COLUMN" || c === "NO_PAUSE_COLUMN" ? 422
+      : 400;
     console.error("[POST /api/alunos/:row] erro:", err);
     return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status });
   }

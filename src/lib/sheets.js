@@ -614,3 +614,95 @@ export async function cancelStudent(rowNumber, expectedName, { uncancel = false 
 
   return { row: rowNumber, nome: curNome, col, cancelado: !uncancel, data: value };
 }
+
+/**
+ * Pausa (ou retoma) o plano do aluno — congelamento por viagem/acidente etc.
+ * Contrato #201/#203 da Sala. Escreve SÓ colunas-input da mestre, NUNCA fórmula:
+ *  - PAUSAR: "Pausado em" (Z) = hoje. A col K (fórmula da Mestre) emite "Pausado"
+ *    (vence a data) → o app bloqueia.
+ *  - RETOMAR: credita os dias parados em "Dias extras" (AA): AA_novo = AA_atual +
+ *    (hoje − Pausado em), e limpa "Pausado em". O vencimento (J=EDATE+U+AA dias)
+ *    estende exatamente pelos dias parados. Acumula em múltiplas pausas.
+ * Acha as colunas por HEADER: "pausad" (Z, único) e "dias extra" (AA) — NÃO casar
+ * por "extra"/"extras" sozinho (U="Meses extras" colidiria, aviso da Mestre #203).
+ * Reversível, não apaga nada.
+ */
+export async function pauseStudent(rowNumber, expectedName, { resume = false } = {}) {
+  if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
+  if (!Number.isInteger(rowNumber) || rowNumber < 2) throw new Error("row inválido");
+
+  const { google } = await import("googleapis");
+  const auth = new google.auth.GoogleAuth({
+    credentials: getCredentials(),
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+  const sheetsRW = google.sheets({ version: "v4", auth });
+  const tab = TAB || "CONTROLE ALUNOS";
+  const norm = (s) => String(s || "").trim().toLowerCase();
+
+  // 1. Colunas por header. "pausad" = Pausado em (único). "dias extra" = Dias extras
+  //    (NÃO usar só "extra"/"extras" — U="Meses extras" colidiria).
+  const headers = ((await sheetsRW.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${tab}!1:1` })).data.values || [])[0] || [];
+  const idxPaus = headers.findIndex((h) => norm(h).includes("pausad"));
+  const idxDias = headers.findIndex((h) => norm(h).includes("dias extra"));
+  if (idxPaus < 0 || idxDias < 0) {
+    const e = new Error('as colunas "Pausado em" / "Dias extras" ainda não existem na mestre — a Mestre precisa criar antes de pausar pelo CRM.');
+    e.code = "NO_PAUSE_COLUMN";
+    throw e;
+  }
+  const colPaus = colLetter(idxPaus);
+  const colDias = colLetter(idxDias);
+
+  // 2. Lê nome (segurança) + Pausado em + Dias extras atuais.
+  const got = await sheetsRW.spreadsheets.values.batchGet({
+    spreadsheetId: SPREADSHEET_ID,
+    ranges: [`${tab}!A${rowNumber}`, `${tab}!${colPaus}${rowNumber}`, `${tab}!${colDias}${rowNumber}`],
+  });
+  const [nameR, pausR, diasR] = got.data.valueRanges.map((v) => ((v.values || [])[0] || [])[0] || "");
+  const curNome = String(nameR).trim();
+  if (!curNome) throw new Error("a linha está vazia");
+  if (expectedName != null && String(expectedName).trim() !== "" && norm(curNome) !== norm(expectedName)) {
+    const e = new Error(`a linha mudou (esperava "${expectedName}", achei "${curNome}"). Atualize a lista e tente de novo.`);
+    e.code = "ROW_MISMATCH";
+    throw e;
+  }
+
+  if (resume) {
+    // RETOMAR: credita os dias parados + limpa Pausado em.
+    if (!String(pausR).trim()) {
+      const e = new Error("o aluno não está pausado (sem data em 'Pausado em').");
+      e.code = "NOT_PAUSED";
+      throw e;
+    }
+    const pausMs = vencMs(pausR);
+    const hojeMs = vencMs(todayBR());
+    const diasParados = Number.isNaN(pausMs) || Number.isNaN(hojeMs) ? 0 : Math.max(0, Math.round((hojeMs - pausMs) / 86400000));
+    const aaAtual = parseInt(String(diasR).replace(/[^\d-]/g, ""), 10) || 0;
+    const novoAA = aaAtual + diasParados;
+    await sheetsRW.spreadsheets.values.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        valueInputOption: "USER_ENTERED",
+        data: [
+          { range: `${tab}!${colDias}${rowNumber}`, values: [[String(novoAA)]] },
+          { range: `${tab}!${colPaus}${rowNumber}`, values: [[""]] },
+        ],
+      },
+    });
+    return { row: rowNumber, nome: curNome, paused: false, diasCreditados: diasParados, diasExtrasTotal: novoAA };
+  }
+
+  // PAUSAR: marca Pausado em = hoje (guarda contra re-pausar, pra não perder a data origem).
+  if (String(pausR).trim()) {
+    const e = new Error("o aluno já está pausado.");
+    e.code = "ALREADY_PAUSED";
+    throw e;
+  }
+  await sheetsRW.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${tab}!${colPaus}${rowNumber}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [[todayBR()]] },
+  });
+  return { row: rowNumber, nome: curNome, paused: true, desde: todayBR() };
+}
