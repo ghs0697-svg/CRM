@@ -84,22 +84,25 @@ export async function getVendasPorDia() {
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
   });
   const sheets = google.sheets({ version: "v4", auth });
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB}!A2:V` });
+  // Lê até X pra pegar o flag de Renovação (col X "Renovação?" = "RENOVACAO").
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB}!A2:X` });
   const rows = res.data.values || [];
 
-  const porDia = new Map(); // "YYYY-MM-DD" -> { receita, vendas }
+  const porDia = new Map(); // "YYYY-MM-DD" -> { receita, vendas, receitaRenov, vendasRenov }
   for (const r of rows) {
     const m = mDataBR(r[2]); // col C DD/MM/YYYY
     if (!m) continue;        // sem data válida = não conta
     const iso = `${m[3]}-${m[2]}-${m[1]}`;
     const valor = parseMoney(r[8]); // col I
-    const d = porDia.get(iso) || { receita: 0, vendas: 0 };
+    const isRenov = String(r[23] || "").trim().toLowerCase().includes("renov"); // col X (índice 23)
+    const d = porDia.get(iso) || { receita: 0, vendas: 0, receitaRenov: 0, vendasRenov: 0 };
     d.vendas += 1;           // cada linha com data = 1 venda
     d.receita += valor;      // soma valor (0 se vazio)
+    if (isRenov) { d.vendasRenov += 1; d.receitaRenov += valor; } // recorte das renovações
     porDia.set(iso, d);
   }
   const dias = [...porDia.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([data, v]) => ({ data, receita: v.receita, vendas: v.vendas }));
+    .map(([data, v]) => ({ data, receita: v.receita, vendas: v.vendas, receitaRenov: v.receitaRenov, vendasRenov: v.vendasRenov }));
   return { dias, atualizado: new Date().toISOString() };
 }

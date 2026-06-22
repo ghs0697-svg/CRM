@@ -130,14 +130,16 @@ export default function MetricasPage() {
 
   // Faturado + vendas direto da mestre, filtrados pelo período
   const auto = useMemo(() => {
-    let faturado = 0, vendas = 0;
+    let faturado = 0, vendas = 0, receitaRenov = 0, vendasRenov = 0;
     for (const dia of vendasDias) {
       if (dia.data >= range.ini && dia.data <= range.fim) {
         faturado += dia.receita;
         vendas += dia.vendas;
+        receitaRenov += dia.receitaRenov || 0;
+        vendasRenov += dia.vendasRenov || 0;
       }
     }
-    return { faturado, vendas };
+    return { faturado, vendas, receitaRenov, vendasRenov };
   }, [vendasDias, range]);
 
   // "Venda no dia" = vendas do período, auto da mestre (overridável)
@@ -297,6 +299,23 @@ export default function MetricasPage() {
                 sub={`ticket médio ${fmtBRL(stats.ticket)}`}
               />
             </div>
+
+            {/* Recorte de RENOVAÇÃO no período (quanto do faturado/vendas veio de renovação) */}
+            <section
+              style={{
+                background: "var(--surface)", border: "1px solid var(--border)",
+                borderRadius: 10, padding: "16px 18px", boxShadow: "var(--shadow-sm)",
+                marginBottom: 16,
+              }}
+            >
+              <div className={styles.cardLabel}>🔄 RENOVAÇÃO NO PERÍODO</div>
+              <div className={styles.kpiRow} style={{ marginTop: 10 }}>
+                <KPI label="Receita renovada" value={fmtBRL(auto.receitaRenov)} />
+                <KPI label="% do faturado" value={pct(auto.faturado > 0 ? auto.receitaRenov / auto.faturado : 0)} />
+                <KPI label="Renovações" value={auto.vendasRenov} />
+                <KPI label="% das vendas" value={pct(auto.vendas > 0 ? auto.vendasRenov / auto.vendas : 0)} />
+              </div>
+            </section>
 
             <div className={styles.bottomRow}>
               {/* Funil */}
