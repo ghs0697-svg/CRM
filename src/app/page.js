@@ -947,6 +947,8 @@ export default function Home() {
   const [filterTipo, setFilterTipo] = useState("all");
   const [filterInsight, setFilterInsight] = useState(null); // null | "suporte" | "produto" | "reajuste"
   const [search, setSearch] = useState("");
+  const [vencDe, setVencDe] = useState("");   // filtro por VENCIMENTO (YYYY-MM-DD) — pra puxar porções de follow/renovação
+  const [vencAte, setVencAte] = useState("");
   const [novoAlunoOpen, setNovoAlunoOpen] = useState(false);
   const [renovarRow, setRenovarRow] = useState(null); // renovação direto da linha (coluna Ação)
 
@@ -1074,6 +1076,17 @@ export default function Home() {
         (qDigits && extractDigits(s.contato).includes(qDigits))
       );
     }
+    if (vencDe || vencAte) {
+      const min = vencDe ? new Date(vencDe + "T00:00:00") : null;
+      const max = vencAte ? new Date(vencAte + "T23:59:59") : null;
+      arr = arr.filter((s) => {
+        const d = parsePtBrDate(s.dataVencimento);
+        if (!d) return false;             // sem vencimento válido = fora do filtro de data
+        if (min && d < min) return false;
+        if (max && d > max) return false;
+        return true;
+      });
+    }
     if (sortKey) {
       const dir = sortDir === "asc" ? 1 : -1;
       const isDate = DATE_KEYS.has(sortKey);
@@ -1097,7 +1110,7 @@ export default function Home() {
       });
     }
     return arr;
-  }, [students, filterStatus, filterTipo, filterInsight, search, sortKey, sortDir]);
+  }, [students, filterStatus, filterTipo, filterInsight, search, vencDe, vencAte, sortKey, sortDir]);
 
   const handleSort = (col) => {
     if (!col.sortable) return;
@@ -1144,6 +1157,37 @@ export default function Home() {
               <option value="all">Plano: Todos</option>
               {tipoOptions.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: 6 }}
+              title="Filtra por DATA DE VENCIMENTO do plano — escolhe um intervalo (dia, semana, mês) pra puxar a porção de alunos a chamar no follow/renovação"
+            >
+              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Vence:</span>
+              <input
+                type="date"
+                aria-label="Vencimento de"
+                value={vencDe}
+                onChange={(e) => setVencDe(e.target.value)}
+                style={{ padding: "6px 8px", borderRadius: 8, background: "transparent", color: "var(--text-main)", border: "1px solid var(--border)", fontSize: "0.8rem", colorScheme: theme === "dark" ? "dark" : "light" }}
+              />
+              <span style={{ color: "var(--text-muted)" }}>→</span>
+              <input
+                type="date"
+                aria-label="Vencimento até"
+                value={vencAte}
+                onChange={(e) => setVencAte(e.target.value)}
+                style={{ padding: "6px 8px", borderRadius: 8, background: "transparent", color: "var(--text-main)", border: "1px solid var(--border)", fontSize: "0.8rem", colorScheme: theme === "dark" ? "dark" : "light" }}
+              />
+              {(vencDe || vencAte) && (
+                <button
+                  className={styles.actionBtn}
+                  style={{ fontSize: "0.72rem", padding: "4px 8px" }}
+                  onClick={() => { setVencDe(""); setVencAte(""); }}
+                  title="Limpar filtro de vencimento"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             <button
               className={styles.actionBtn}
               onClick={() => setNovoAlunoOpen(true)}
