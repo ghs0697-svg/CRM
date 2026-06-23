@@ -101,8 +101,11 @@ export default function MetricasPage() {
     if (!leadsAuto) return;
     setInputs((s) => ({
       ...s,
-      totalLeads: leadsAuto.totalLeads ?? s.totalLeads,
-      primeiraPergunta: leadsAuto.boasVindas ?? s.primeiraPergunta,
+      // "Total de leads" = boas-vindas, igual ao /funil (decisão do GH 2026-06-23).
+      // Antes puxava o total de linhas da REGISTRO (todos que entraram), o que confundia.
+      totalLeads: leadsAuto.boasVindas ?? s.totalLeads,
+      // boas-vindas virou o total → "1ª pergunta respondida" passa a refletir o MORNO (aqueceu).
+      primeiraPergunta: leadsAuto.morno ?? s.primeiraPergunta,
       ofertaFeita: leadsAuto.quente ?? s.ofertaFeita,
       link: leadsAuto.link ?? s.link,
     }));
