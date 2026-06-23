@@ -1,5 +1,13 @@
 import { getFunilStats } from "@/lib/funil";
+import MesFilter from "./MesFilter";
 import styles from "./funil.module.css";
+
+const MES_NOMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const mesLabel = (m) => {
+  if (!m || m === "todos") return "Todos os meses";
+  const [y, mo] = String(m).split("-");
+  return `${MES_NOMES[+mo - 1] || mo}/${y}`;
+};
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,10 +38,13 @@ function Bar({ label, count, pct, max }) {
 const fmt = (n) => Number(n || 0).toLocaleString("pt-BR");
 const fpct = (n) => `${Number(n || 0).toFixed(1).replace(".", ",")}%`;
 
-export default async function FunilPage() {
+export default async function FunilPage({ searchParams }) {
+  const sp = (await searchParams) || {};
+  const mes = typeof sp.mes === "string" ? sp.mes : undefined;
+
   let data = null;
   let err = null;
-  try { data = await getFunilStats(); } catch (e) { err = String(e?.message || e); }
+  try { data = await getFunilStats(mes); } catch (e) { err = String(e?.message || e); }
 
   const t = data?.totals;
 
@@ -41,8 +52,11 @@ export default async function FunilPage() {
     <div className={styles.container}>
       <main className={styles.main}>
         <header className={styles.header}>
-          <div className={styles.breadcrumb}>
-            <span>Workstream GH</span> <span>›</span> <strong>Funil</strong>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+            <div className={styles.breadcrumb}>
+              <span>Workstream GH</span> <span>›</span> <strong>Funil</strong>
+            </div>
+            {data && <MesFilter meses={data.meses} mesSel={data.mesSel} />}
           </div>
           {err && <div className={styles.errorBanner}>Erro ao carregar o funil: {err}</div>}
         </header>
@@ -57,6 +71,10 @@ export default async function FunilPage() {
                 <Card label="Pegaram o Link" value={fmt(t.link)} sub={fpct(t.pctLink)} />
               </div>
 
+              <p style={{ fontSize: "0.85rem", opacity: 0.65, margin: "0 0 0.25rem" }}>
+                Período: <strong>{mesLabel(data.mesSel)}</strong>
+              </p>
+
               <Section title="Temperatura (% do total de leads)">
                 <Bar label="Frio" count={t.frio} pct={t.boasVindas ? Math.round((t.frio / t.boasVindas) * 1000) / 10 : 0} max={100} />
                 <Bar label="Morno" count={t.morno} pct={t.pctMorno} max={100} />
@@ -64,7 +82,7 @@ export default async function FunilPage() {
                 <Bar label="Link" count={t.link} pct={t.pctLink} max={100} />
               </Section>
 
-              <Section title="Últimos 30 dias">
+              <Section title={data.mesSel === "todos" ? "Últimos 30 dias" : `Dias de ${mesLabel(data.mesSel)}`}>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
                     <thead>

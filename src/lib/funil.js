@@ -22,7 +22,7 @@ const brToISO = (d) => {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 };
 
-export async function getFunilStats() {
+export async function getFunilStats(mes) {
   const auth = new google.auth.GoogleAuth({
     credentials: getCredentials(),
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
@@ -53,7 +53,16 @@ export async function getFunilStats() {
   const hojeISO = new Date().toISOString().slice(0, 10);
   const diasReais = dias.filter((d) => { const iso = brToISO(d.data); return iso && iso <= hojeISO; });
 
-  const totals = diasReais.reduce(
+  // Filtro de mês. meses = YYYY-MM disponíveis (mais recente primeiro).
+  // mes = "YYYY-MM" filtra aquele mês · mes = "todos" agrega tudo · sem mes = default no mês mais recente.
+  const meses = [...new Set(diasReais.map((d) => brToISO(d.data).slice(0, 7)).filter(Boolean))].sort().reverse();
+  let mesSel;
+  if (mes === "todos") mesSel = "todos";
+  else if (mes && meses.includes(mes)) mesSel = mes;
+  else mesSel = meses[0] || "todos";
+  const diasUsados = mesSel === "todos" ? diasReais : diasReais.filter((d) => brToISO(d.data).slice(0, 7) === mesSel);
+
+  const totals = diasUsados.reduce(
     (t, d) => ({
       boasVindas: t.boasVindas + d.boasVindas,
       frio: t.frio + d.frio,
@@ -89,5 +98,6 @@ export async function getFunilStats() {
     linktree.sort((a, b) => b.c7 - a.c7 || b.total - a.total);
   } catch { linktree = []; }
 
-  return { totals, recent: diasReais.slice(-30).reverse(), linktree, linktreeAtualizado };
+  const recent = mesSel === "todos" ? diasUsados.slice(-30).reverse() : [...diasUsados].reverse();
+  return { totals, recent, linktree, linktreeAtualizado, meses, mesSel };
 }
