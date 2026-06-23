@@ -68,5 +68,26 @@ export async function getFunilStats() {
   totals.pctQuente = pct(totals.quente);
   totals.pctLink = pct(totals.link);
 
-  return { totals, recent: diasReais.slice(-30).reverse() };
+  // Linktree (cliques por link) — aba LINKTREE da MESMA sheet, escrita pelo coletor do CRM
+  // (~/webfit-mcp/linktree/coletor-linktree.mjs, cron no Mac). Leitura separada e guardada:
+  // se a aba ainda não existe, o /funil não quebra.
+  let linktree = [];
+  let linktreeAtualizado = null;
+  try {
+    const lt = await sheets.spreadsheets.values.get({ spreadsheetId: LEADS_SHEET_ID, range: "LINKTREE!A2:I" });
+    for (const r of (lt.data.values || [])) {
+      if (!r[1]) continue; // sem tr_ee_id = linha vazia
+      linktree.push({
+        id: String(r[1]).trim(),
+        label: String(r[2] || "").trim(),
+        tipo: String(r[3] || "").trim(),
+        destino: String(r[4] || "").trim(),
+        c24: numInt(r[5]), c7: numInt(r[6]), c28: numInt(r[7]), total: numInt(r[8]),
+      });
+      if (!linktreeAtualizado && r[0]) linktreeAtualizado = String(r[0]).trim();
+    }
+    linktree.sort((a, b) => b.c7 - a.c7 || b.total - a.total);
+  } catch { linktree = []; }
+
+  return { totals, recent: diasReais.slice(-30).reverse(), linktree, linktreeAtualizado };
 }

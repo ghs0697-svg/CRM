@@ -88,6 +88,39 @@ export default async function FunilPage() {
                   </table>
                 </div>
               </Section>
+
+              {data.linktree?.length > 0 && (
+                <Section title="Linktree — cliques por link">
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Link</th><th>Tipo</th><th>Destino</th>
+                          <th>24h</th><th>7 dias</th><th>28 dias</th><th>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.linktree.map((l) => (
+                          <tr key={l.id}>
+                            <td><strong>{l.label}</strong></td>
+                            <td>{l.tipo === "proprio" ? "Página" : "Atendente"}</td>
+                            <td>{l.destino}</td>
+                            <td>{fmt(l.c24)}</td>
+                            <td><strong>{fmt(l.c7)}</strong></td>
+                            <td>{fmt(l.c28)}</td>
+                            <td>{fmt(l.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {data.linktreeAtualizado && (
+                    <p style={{ fontSize: "0.8rem", opacity: 0.6, marginTop: "0.5rem" }}>
+                      Atualizado: {String(data.linktreeAtualizado).replace("T", " ").slice(0, 16)}. Coletado 1x/dia do tr.ee (links recém-criados ficam em 0; a sessão pode expirar e exigir re-login).
+                    </p>
+                  )}
+                </Section>
+              )}
             </>
           )}
         </div>
