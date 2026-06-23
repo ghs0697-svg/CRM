@@ -36,7 +36,6 @@ export default async function FunilPage() {
   try { data = await getFunilStats(); } catch (e) { err = String(e?.message || e); }
 
   const t = data?.totals;
-  const bitlyMax = data ? Math.max(1, ...data.bitly.map((x) => x.cliques)) : 1;
 
   return (
     <div className={styles.container}>
@@ -63,19 +62,6 @@ export default async function FunilPage() {
                 <Bar label="Morno" count={t.morno} pct={t.pctMorno} max={100} />
                 <Bar label="Quente" count={t.quente} pct={t.pctQuente} max={100} />
                 <Bar label="Link" count={t.link} pct={t.pctLink} max={100} />
-              </Section>
-
-              <Section title={`Cliques por fonte (Bitly) — ${fmt(data.bitlyTotal)} total`}>
-                {data.bitly.length === 0 && <div className={styles.empty}>Sem dados de Bitly.</div>}
-                {data.bitly.map((b) => (
-                  <Bar
-                    key={b.fonte}
-                    label={b.fonte}
-                    count={b.cliques}
-                    pct={data.bitlyTotal ? Math.round((b.cliques / data.bitlyTotal) * 1000) / 10 : 0}
-                    max={data.bitlyTotal ? Math.round((bitlyMax / data.bitlyTotal) * 1000) / 10 : 100}
-                  />
-                ))}
               </Section>
 
               <Section title="Últimos 30 dias">

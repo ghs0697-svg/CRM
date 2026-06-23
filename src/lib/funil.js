@@ -3,7 +3,6 @@ import { google } from "googleapis";
 // Funil de leads do ManyChat — planilha "Controle Leads ManyChat".
 // Aba PAINEL (diário, já agregado): linha 4 é o cabeçalho, dados a partir da 5.
 //   A Data · B Dia · C Boas Vindas · D FRIO · E MORNO · F QUENTE · G LINK · ...
-// Aba "REGISTRO BITLY": A Data · B Fonte · C Cliques
 const LEADS_SHEET_ID = process.env.LEADS_SHEET_ID || "1PzUnZx6fNv-by0H1A9QZzDpp5jJJ4hOmp2LOuuLQrXE";
 
 function getCredentials() {
@@ -32,10 +31,9 @@ export async function getFunilStats() {
 
   const res = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: LEADS_SHEET_ID,
-    ranges: ["PAINEL!A5:G", "REGISTRO BITLY!A2:C"],
+    ranges: ["PAINEL!A5:G"],
   });
   const painel = res.data.valueRanges?.[0]?.values || [];
-  const bitlyRows = res.data.valueRanges?.[1]?.values || [];
 
   const dias = [];
   for (const r of painel) {
@@ -70,17 +68,5 @@ export async function getFunilStats() {
   totals.pctQuente = pct(totals.quente);
   totals.pctLink = pct(totals.link);
 
-  // Bitly: cliques por fonte (BIO / STORIES / DM / ...)
-  const fonteMap = new Map();
-  for (const r of bitlyRows) {
-    const fonte = String(r[1] || "").trim().toUpperCase();
-    if (!fonte) continue;
-    fonteMap.set(fonte, (fonteMap.get(fonte) || 0) + numInt(r[2]));
-  }
-  const bitly = [...fonteMap.entries()]
-    .map(([fonte, cliques]) => ({ fonte, cliques }))
-    .sort((a, b) => b.cliques - a.cliques);
-  const bitlyTotal = bitly.reduce((s, x) => s + x.cliques, 0);
-
-  return { totals, recent: diasReais.slice(-30).reverse(), bitly, bitlyTotal };
+  return { totals, recent: diasReais.slice(-30).reverse() };
 }
