@@ -169,9 +169,18 @@ function renderFieldValue(key, value) {
   return value;
 }
 
-function StatCard({ color, icon, value, label }) {
+function StatCard({ color, icon, value, label, onClick, active }) {
+  const clickable = typeof onClick === "function";
   return (
-    <div className={styles.statCard}>
+    <div
+      className={styles.statCard}
+      onClick={onClick}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      title={clickable ? (active ? "Filtro ativo — clique pra limpar" : "Clique pra filtrar a lista") : undefined}
+      style={clickable ? { cursor: "pointer", outline: active ? "2px solid var(--gold)" : "none", outlineOffset: 2 } : undefined}
+    >
       <div className={`${styles.statIcon} ${styles[color]}`}>{icon}</div>
       <div className={styles.statInfo}>
         <span className={styles.statValue}>{value}</span>
@@ -179,6 +188,17 @@ function StatCard({ color, icon, value, label }) {
       </div>
     </div>
   );
+}
+
+// Aluno na "janela de renovação": plano ATIVO, a data de contato de renovação
+// (vencimento − 1 mês, quando o raio-x dispara) já chegou, e ainda não venceu.
+// = os ~30 dias antes do vencimento. É a lista que o funcionário fica em cima.
+function emJanelaRenovacao(s, hoje) {
+  if (s.statusPlano !== "Ativo") return false;
+  const venc = parsePtBrDate(s.dataVencimento);
+  const contato = parsePtBrDate(s.dataContatoRenovacao);
+  if (!venc || !contato) return false;
+  return contato <= hoje && venc >= hoje;
 }
 
 function NotesDrawer({ insight, notaSuporte, nome, open, onClose }) {
@@ -1005,6 +1025,7 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [vencDe, setVencDe] = useState("");   // filtro por VENCIMENTO (YYYY-MM-DD) — pra puxar porções de follow/renovação
   const [vencAte, setVencAte] = useState("");
+  const [janelaRenov, setJanelaRenov] = useState(false); // só quem entrou na janela de renovação (≤30d pro vencimento, ativos)
   const [novoAlunoOpen, setNovoAlunoOpen] = useState(false);
   const [renovarRow, setRenovarRow] = useState(null); // renovação direto da linha (coluna Ação)
 
@@ -1073,17 +1094,12 @@ export default function Home() {
   const stats = useMemo(() => {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    const in30 = new Date(hoje);
-    in30.setDate(in30.getDate() + 30);
     let total = 0, ativos = 0, vencidos = 0, renovacao = 0;
     for (const s of students) {
       total++;
       if (s.statusPlano === "Ativo") ativos++;
       if (s.statusPlano === "Vencido") vencidos++;
-      if (s.statusPlano === "Ativo") {
-        const d = parsePtBrDate(s.dataContatoRenovacao);
-        if (d && d <= in30) renovacao++;
-      }
+      if (emJanelaRenovacao(s, hoje)) renovacao++; // janela real: ≤30d pro vencimento
     }
     return { total, ativos, vencidos, renovacao };
   }, [students]);
@@ -1112,6 +1128,10 @@ export default function Home() {
     let arr = students;
     if (filterStatus !== "all") arr = arr.filter((s) => s.statusPlano === filterStatus);
     if (filterTipo !== "all")   arr = arr.filter((s) => s.tipoPlano === filterTipo);
+    if (janelaRenov) {
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      arr = arr.filter((s) => emJanelaRenovacao(s, hoje));
+    }
     if (filterInsight) {
       arr = arr.filter((s) => {
         if (filterInsight === "sumido")
@@ -1166,7 +1186,7 @@ export default function Home() {
       });
     }
     return arr;
-  }, [students, filterStatus, filterTipo, filterInsight, search, vencDe, vencAte, sortKey, sortDir]);
+  }, [students, filterStatus, filterTipo, filterInsight, janelaRenov, search, vencDe, vencAte, sortKey, sortDir]);
 
   const handleSort = (col) => {
     if (!col.sortable) return;
@@ -1193,7 +1213,7 @@ export default function Home() {
           <div className={styles.statsCards}>
             <StatCard color="blue"   icon="👥" value={stats.total}     label="Total" />
             <StatCard color="green"  icon="✓"  value={stats.ativos}    label="Ativos" />
-            <StatCard color="yellow" icon="⏳" value={stats.renovacao} label="Renovação ≤ 30d" />
+            <StatCard color="yellow" icon="⏳" value={stats.renovacao} label="Renovação ≤ 30d" onClick={() => setJanelaRenov((v) => !v)} active={janelaRenov} />
             <StatCard color="red"    icon="⚠️" value={stats.vencidos}  label="Vencidos" />
           </div>
 
