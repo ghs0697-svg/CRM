@@ -75,6 +75,35 @@ export default async function QuizPage() {
                 ))}
               </Section>
 
+              {data.outrasLandings?.length > 0 && (
+                <Section title="Outras landings (fora do quiz)">
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+                      <thead>
+                        <tr style={{ textAlign: "left", opacity: 0.6 }}>
+                          <th style={{ padding: "6px 8px" }}>Landing</th>
+                          <th style={{ padding: "6px 8px" }}>Métrica</th>
+                          <th style={{ padding: "6px 8px", textAlign: "right" }}>Total</th>
+                          <th style={{ padding: "6px 8px", textAlign: "right" }}>Últimos 7d</th>
+                          <th style={{ padding: "6px 8px" }}>Top fontes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.outrasLandings.map((l) => (
+                          <tr key={l.tag} style={{ borderTop: "1px solid rgba(128,128,128,0.2)" }}>
+                            <td style={{ padding: "6px 8px", fontWeight: 600 }}>{l.label}</td>
+                            <td style={{ padding: "6px 8px", opacity: 0.7 }}>{l.metrica}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>{l.total.toLocaleString("pt-BR")}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{l.ult7d.toLocaleString("pt-BR")}</td>
+                            <td style={{ padding: "6px 8px", opacity: 0.8 }}>{l.fontes.map((f) => `${f.fonte} ${f.count}`).join(" · ")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Section>
+              )}
+
               <Section title="Sessões novas por dia (últimos 30)">
                 <div className={styles.days}>
                   {data.porDia.map((d) => (

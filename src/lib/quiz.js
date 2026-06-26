@@ -167,9 +167,43 @@ export async function getQuizStats() {
     .sort((a, b) => brToISO(a.dia).localeCompare(brToISO(b.dia)))
     .slice(-30);
 
+  // Outras landings (fora do quiz metodogh) — vêm da MESMA LOG QUIZ com col B = tag.
+  // Absorve a antiga aba FONTES da mestre (CRM = fonte única). step=click (cliques de
+  // link, ex /ds que pula o quiz e vai pro WhatsApp) ou pageview (visitas de página).
+  // Shape NÃO entra aqui (é um quiz próprio, tem funil — mereceria view própria).
+  const LANDING_DEFS = {
+    ds:        { label: "/ds (Corredor → WhatsApp)", metrica: "cliques" },
+    "ds-feed": { label: "/ds (Feed)",                metrica: "cliques" },
+    peitao:    { label: "Peitão de Pombo",           metrica: "visitas" },
+    braco:     { label: "Braço de Gorila",           metrica: "visitas" },
+  };
+  const ms7 = Date.now() - 7 * 864e5;
+  const landMap = new Map(); // tag -> { total, ult7d, fontes:Map }
+  for (const r of rows) {
+    const tag = String(r[1] || "").trim().toLowerCase();
+    if (!LANDING_DEFS[tag]) continue;
+    const ts = cellToTs(r[0]);
+    let L = landMap.get(tag);
+    if (!L) { L = { total: 0, ult7d: 0, fontes: new Map() }; landMap.set(tag, L); }
+    L.total++;
+    if (ts !== null && ts >= ms7) L.ult7d++;
+    const f = String(r[4] || "").trim().toLowerCase() || "(sem fonte)";
+    L.fontes.set(f, (L.fontes.get(f) || 0) + 1);
+  }
+  const outrasLandings = [...landMap.entries()]
+    .map(([tag, L]) => ({
+      tag,
+      label: LANDING_DEFS[tag].label,
+      metrica: LANDING_DEFS[tag].metrica,
+      total: L.total,
+      ult7d: L.ult7d,
+      fontes: [...L.fontes.entries()].map(([fonte, count]) => ({ fonte, count })).sort((a, b) => b.count - a.count).slice(0, 5),
+    }))
+    .sort((a, b) => b.total - a.total);
+
   return {
     totalSessions, totalEventos, descartadosVelho,
     iniciaram, concluiram, taxaConclusao, waCount, conversaoWa,
-    funil, porFonte, porDia,
+    funil, porFonte, porDia, outrasLandings,
   };
 }
