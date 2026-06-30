@@ -75,6 +75,21 @@ function daysBetween(aIso, bIso) {
   if (!a || !b) return null;
   return Math.floor((b - a) / 86400000);
 }
+// Timestamp pt-BR ("DD/MM/YYYY HH:mm:ss", como vem de CARGAS/ESFORCO/PROGRESSO via
+// Sheets API) -> "YYYY-MM-DD" (mesmo formato do "Data Treino" do LOGS, col D). Fallback
+// pro serial do Sheets (raro). "" quando não dá pra ler.
+function brTsToISO(cell) {
+  const s = String(cell == null ? "" : cell).trim();
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  const num = parseFloat(s.replace(",", "."));
+  if (!isNaN(num) && num > 30000 && num < 90000) {
+    const d = new Date(Math.round((num - 25569) * 86400000));
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+  }
+  return "";
+}
 // E.164: BR = 55+DDD+número; estrangeiro mantém o DDI próprio (regra da skill de telefone).
 function toE164(raw) {
   const d = onlyDigits(raw);
@@ -113,6 +128,44 @@ export async function computeSumidos() {
       if (dt > cur.dataTreino) { cur.dataTreino = dt; if (String(r[1] || "").trim()) cur.nome = String(r[1]).trim(); }
       cur.totalDias = Math.max(cur.totalDias, totalDias);
     }
+  }
+
+  // 1b) Defesa-em-profundidade (Sala #404): o "último treino" tem que contar também a
+  // atividade de MARCAÇÃO (exercício/carga/esforço), não só o "dia concluído" do LOGS.
+  // Aluno que marca exercícios mas não fecha o dia ficava com dataTreino velho no LOGS
+  // e era flagado como sumido errado (caso Rogério). Espelha o raioxSummary_ do .gs:
+  // última atividade = MAX Timestamp do aluno em CARGAS/ESFORCO/PROGRESSO (col A = ts
+  // pt-BR, col B = SheetId; conta marcar E desmarcar, igual ao raiox). SÓ ATUALIZA sid
+  // que JÁ existe no `last` (quem já fechou dia alguma vez): não adiciona ninguém, então
+  // isto só REDUZ falso-positivo, nunca expande o roster.
+  //
+  // Robustez: (a) isto é REFINO — NÃO pode derrubar o ciclo base (LOGS+CONTROLE): o
+  // try/catch degrada pras datas do LOGS se o Sheets falhar (429/timeout/aba renomeada);
+  // (b) as 3 abas são append-only e crescem pra sempre — lê só a CAUDA (últimas
+  // ACT_WINDOW linhas), que cobre de sobra os 7 dias do critério e limita payload/tempo
+  // no cron de 60s. Atividade mais velha que a janela só afeta quem já está 25k+ linhas
+  // (semanas) sem marcar nada — esse fica no roster de qualquer jeito (>7 dias).
+  try {
+    const ACT_TABS = ["CARGAS", "ESFORCO", "PROGRESSO"];
+    const ACT_WINDOW = 25000;
+    const meta = await sh.spreadsheets.get({
+      spreadsheetId: SPREADSHEET_ID,
+      fields: "sheets(properties(title,gridProperties(rowCount)))",
+    });
+    const rowCount = new Map((meta.data.sheets || []).map((s) => [s.properties.title, (s.properties.gridProperties || {}).rowCount || 0]));
+    const ranges = ACT_TABS.map((t) => `${t}!A${Math.max(2, (rowCount.get(t) || 0) - ACT_WINDOW)}:B`);
+    const actBatch = await sh.spreadsheets.values.batchGet({ spreadsheetId: SPREADSHEET_ID, ranges });
+    for (const vr of actBatch.data.valueRanges || []) {
+      for (const row of vr.values || []) {
+        const sid = String(row[1] || "").trim();
+        const lw = sid && last.get(sid);
+        if (!lw) continue;                       // só quem já tem LOGS (não expande roster)
+        const actIso = brTsToISO(row[0]);
+        if (actIso && actIso > lw.dataTreino) lw.dataTreino = actIso;
+      }
+    }
+  } catch (e) {
+    console.error("follow-sumidos: merge de atividade (CARGAS/ESFORCO/PROGRESSO) falhou, seguindo só com LOGS:", (e && e.message) || e);
   }
 
   // 2) join CONTROLE ALUNOS por SheetId (link col W) -> telefone, status, nome
