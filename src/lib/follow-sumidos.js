@@ -65,10 +65,16 @@ const parseISO = (s) => {
   const m = String(s || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00`) : null;
 };
+// Data de hoje no fuso BRT (igual às datas da mestre, gravadas em America/Sao_Paulo
+// pelo Apps Script: LOGS col D e os Timestamps de CARGAS/ESFORCO/PROGRESSO). Sem o fuso
+// explícito, na Vercel (TZ=UTC) "hoje" vira o dia seguinte das ~21h à meia-noite BRT e
+// inflava diasSemTreinar em 1 na borda dos 7 dias. 'en-CA' já formata YYYY-MM-DD.
+// Espelha o todayBR() do sheets.js.
 function todayISO() {
-  const d = new Date(); d.setHours(0, 0, 0, 0);
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
 }
 function daysBetween(aIso, bIso) {
   const a = parseISO(aIso), b = parseISO(bIso);
