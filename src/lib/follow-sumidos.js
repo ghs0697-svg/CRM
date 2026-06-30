@@ -1,10 +1,12 @@
 import { google } from "googleapis";
 
-// Follow-up automático de aluno SUMIDO da academia.
-// Fonte: aba LOGS da mestre (1 linha = 1 treino concluído pelo app). Cruza com
-// CONTROLE ALUNOS (por SheetId no link col W) pra pegar telefone + status.
+// Follow-up automático de aluno SUMIDO do app.
+// Fonte: aba LOGS da mestre (1 linha = 1 dia concluído pelo app) como piso de "já usou o
+// app alguma vez", refinada pela última ATIVIDADE (heartbeat de abertura + marcação).
+// Cruza com CONTROLE ALUNOS (por SheetId no link col W) pra pegar telefone + status.
 //
-// Critério (decisão GH): ativo + já treinou pelo app + 7+ dias SEM treinar (sem teto).
+// Critério (decisão GH, atualizado #407): ativo + já usou o app + 7+ dias SEM nenhum
+// sinal de vida no app (abrir, marcar, fechar dia), sem teto. Gatilho = "sumiu do app".
 // Cadência (decisão GH 2026-06-19): UMA mensagem por EPISÓDIO de inatividade. Quando
 // o aluno cruza 7 dias sem treinar, recebe 1 mensagem. Enquanto seguir parado NÃO
 // recebe de novo (mesmo 30 dias seguidos = 1 msg só). Só abre novo episódio (= nova
@@ -35,9 +37,9 @@ const primeiroNome = (nome) => (String(nome || "").trim().split(/\s+/)[0] || "")
 // Mensagem pronta (sem nome). 3 variações; o CRM já escolhe uma por linha pra
 // o Make não precisar de fórmula nenhuma. Sem aspas duplas (JSON-safe).
 const MENSAGENS = [
-  "Opa! 👊 Reparei que faz uns dias que tu não aparece no aplicativo. Tá tudo certo aí? Se travou em algo (correria, lesão, dúvida no protocolo) me conta que a gente resolve. Bora não perder o ritmo! 💪",
-  "E aí! Passando pra saber de ti, sumiu do treino esses dias. Aconteceu alguma coisa? Se precisar ajustar treino ou dieta, ou tiver com dificuldade, é só falar. Tamo junto! 🔥",
-  "Fala! 👀 Cadê os treinos? Me dá um sinal de vida, tá tudo certo? Qualquer coisa que tá te segurando, manda aqui que a gente desenrola. Não deixa o shape esfriar! 💪",
+  "Opa! 👊 Vi que faz uns dias que tu não abre o app. Tá tudo certo? Se travou em algo (correria, lesão, dúvida no protocolo) me chama que a gente resolve. Bora retomar o ritmo! 💪",
+  "E aí! Sumiu do app esses dias, deu pra sentir tua falta por aqui 😄 Aconteceu alguma coisa? Se precisar ajustar treino ou dieta é só falar. Tamo junto! 🔥",
+  "Fala! 👊 Faz um tempinho que tu não dá as caras no app. Bora não deixar o shape esfriar? Qualquer dificuldade (tempo, lesão, dúvida) me conta que eu ajusto contigo. 💪",
 ];
 // rotação determinística: varia por aluno (hash do sheetId) e a cada re-contato (vezes)
 function pickMensagem(sheetId, vezes) {
@@ -136,23 +138,28 @@ export async function computeSumidos() {
     }
   }
 
-  // 1b) Defesa-em-profundidade (Sala #404): o "último treino" tem que contar também a
-  // atividade de MARCAÇÃO (exercício/carga/esforço), não só o "dia concluído" do LOGS.
-  // Aluno que marca exercícios mas não fecha o dia ficava com dataTreino velho no LOGS
-  // e era flagado como sumido errado (caso Rogério). Espelha o raioxSummary_ do .gs:
-  // última atividade = MAX Timestamp do aluno em CARGAS/ESFORCO/PROGRESSO (col A = ts
-  // pt-BR, col B = SheetId; conta marcar E desmarcar, igual ao raiox). SÓ ATUALIZA sid
-  // que JÁ existe no `last` (quem já fechou dia alguma vez): não adiciona ninguém, então
-  // isto só REDUZ falso-positivo, nunca expande o roster.
+  // 1b) Última ATIVIDADE no app, não só "dia concluído" (Sala #404 + #407). O critério
+  // virou "sumiu do APP", não "sumiu do treino": o "último sinal de vida" tem que contar
+  // toda interação, não só o fechamento de dia do LOGS. Aluno que marca exercícios mas
+  // não fecha o dia ficava com dataTreino velho e era flagado errado (caso Rogério).
+  // Sinais (todos col A = Timestamp pt-BR, col B = SheetId; conta marcar E desmarcar,
+  // espelha o raioxSummary_ do .gs):
+  //   - ATIVIDADE: HEARTBEAT de abertura (logPing_) — o sinal-REI: 1 linha por aluno/dia
+  //     só de ABRIR o app, mesmo sem marcar nada. Como qualquer interação (marcar carga,
+  //     pedir ajuste) passa por abrir o app, ATIVIDADE subsume os demais sinais.
+  //   - CARGAS/ESFORCO/PROGRESSO: marcação de exercício/carga/esforço (defesa extra).
+  // última atividade = MAX Timestamp do aluno entre essas abas. SÓ ATUALIZA sid que JÁ
+  // existe no `last` (quem já fechou dia alguma vez): não adiciona ninguém, então isto só
+  // REDUZ falso-positivo, nunca expande o roster.
   //
   // Robustez: (a) isto é REFINO — NÃO pode derrubar o ciclo base (LOGS+CONTROLE): o
   // try/catch degrada pras datas do LOGS se o Sheets falhar (429/timeout/aba renomeada);
-  // (b) as 3 abas são append-only e crescem pra sempre — lê só a CAUDA (últimas
+  // (b) as abas são append-only e crescem pra sempre — lê só a CAUDA (últimas
   // ACT_WINDOW linhas), que cobre de sobra os 7 dias do critério e limita payload/tempo
   // no cron de 60s. Atividade mais velha que a janela só afeta quem já está 25k+ linhas
-  // (semanas) sem marcar nada — esse fica no roster de qualquer jeito (>7 dias).
+  // (semanas) sem nenhum sinal — esse fica no roster de qualquer jeito (>7 dias).
   try {
-    const ACT_TABS = ["CARGAS", "ESFORCO", "PROGRESSO"];
+    const ACT_TABS = ["ATIVIDADE", "CARGAS", "ESFORCO", "PROGRESSO"];
     const ACT_WINDOW = 25000;
     const meta = await sh.spreadsheets.get({
       spreadsheetId: SPREADSHEET_ID,
