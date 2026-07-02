@@ -1,4 +1,5 @@
 import { getQuizStats } from "@/lib/quiz";
+import PeriodoFilter from "../_components/PeriodoFilter";
 import styles from "./quiz.module.css";
 
 export const runtime = "nodejs";
@@ -35,10 +36,13 @@ function Bar({ label, count, pct, max }) {
   );
 }
 
-export default async function QuizPage() {
+export default async function QuizPage({ searchParams }) {
+  const sp = (await searchParams) || {};
+  const diasSel = /^(30|60|90)$/.test(String(sp.dias || "")) ? String(sp.dias) : "";
+
   let data = null;
   let err = null;
-  try { data = await getQuizStats(); } catch (e) { err = String(e?.message || e); }
+  try { data = await getQuizStats(diasSel ? Number(diasSel) : 0); } catch (e) { err = String(e?.message || e); }
 
   const fonteMax = data ? Math.max(1, ...data.porFonte.map((x) => x.pct)) : 1;
   const diaMax = data ? Math.max(1, ...data.porDia.map((x) => x.count)) : 1;
@@ -47,8 +51,11 @@ export default async function QuizPage() {
     <div className={styles.container}>
       <main className={styles.main}>
         <header className={styles.header}>
-          <div className={styles.breadcrumb}>
-            <span>Workstream GH</span> <span>›</span> <strong>Quiz</strong>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+            <div className={styles.breadcrumb}>
+              <span>Workstream GH</span> <span>›</span> <strong>Quiz</strong>
+            </div>
+            <PeriodoFilter diasSel={diasSel} base="/quiz" />
           </div>
           {err && <div className={styles.errorBanner}>Erro ao carregar o quiz: {err}</div>}
         </header>

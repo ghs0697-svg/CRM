@@ -1,5 +1,13 @@
 import { getFaturamentoStats } from "@/lib/faturamento";
+import MesFilter from "../_components/MesFilter";
 import styles from "./faturamento.module.css";
+
+const MES_NOMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const mesLabel = (m) => {
+  if (!m || m === "todos") return "Todos os meses";
+  const [y, mo] = String(m).split("-");
+  return `${MES_NOMES[+mo - 1] || mo}/${y}`;
+};
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,10 +43,14 @@ function MoneyBar({ label, value, max }) {
   );
 }
 
-export default async function FaturamentoPage() {
+export default async function FaturamentoPage({ searchParams }) {
+  const sp = (await searchParams) || {};
+  const mes = typeof sp.mes === "string" ? sp.mes : undefined;
+
   let data = null;
   let err = null;
-  try { data = await getFaturamentoStats(); } catch (e) { err = String(e?.message || e); }
+  try { data = await getFaturamentoStats(mes); } catch (e) { err = String(e?.message || e); }
+  const filtrado = data && data.mesSel !== "todos";
 
   const mesMax = data ? Math.max(1, ...data.porMes.map((m) => m.receita)) : 1;
   const planoMax = data ? Math.max(1, ...data.planos.map((p) => p.receita)) : 1;
@@ -48,8 +60,11 @@ export default async function FaturamentoPage() {
     <div className={styles.container}>
       <main className={styles.main}>
         <header className={styles.header}>
-          <div className={styles.breadcrumb}>
-            <span>Workstream GH</span> <span>›</span> <strong>Faturamento</strong>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+            <div className={styles.breadcrumb}>
+              <span>Workstream GH</span> <span>›</span> <strong>Faturamento</strong>
+            </div>
+            {data && <MesFilter meses={data.meses} mesSel={data.mesSel} base="/faturamento" />}
           </div>
           {err && <div className={styles.errorBanner}>Erro: {err}</div>}
         </header>
@@ -58,8 +73,8 @@ export default async function FaturamentoPage() {
           {data && (
             <>
               <div className={styles.cards}>
-                <Card label="Receita total" value={fmtBRL(data.receitaTotal)} />
-                <Card label="Vendas" value={fmt(data.vendasTotal)} />
+                <Card label={filtrado ? `Receita (${mesLabel(data.mesSel)})` : "Receita total"} value={fmtBRL(data.receitaTotal)} />
+                <Card label={filtrado ? `Vendas (${mesLabel(data.mesSel)})` : "Vendas"} value={fmt(data.vendasTotal)} />
                 <Card label="Ticket médio" value={fmtBRL(data.ticketMedio)} />
                 <Card label={`Mês atual (${data.mesAtual.label || "—"})`} value={fmtBRL(data.mesAtual.receita)} sub={`${fmt(data.mesAtual.vendas)} vendas`} />
               </div>
@@ -68,11 +83,11 @@ export default async function FaturamentoPage() {
                 {data.porMes.map((m) => <MoneyBar key={m.ym} label={`${m.label} · ${fmt(m.vendas)}v`} value={m.receita} max={mesMax} />)}
               </Section>
 
-              <Section title="Por tipo de plano">
+              <Section title={filtrado ? `Por tipo de plano (${mesLabel(data.mesSel)})` : "Por tipo de plano"}>
                 {data.planos.map((p) => <MoneyBar key={p.plano} label={p.plano} value={p.receita} max={planoMax} />)}
               </Section>
 
-              <Section title="Por categoria">
+              <Section title={filtrado ? `Por categoria (${mesLabel(data.mesSel)})` : "Por categoria"}>
                 {data.categorias.map((c) => <MoneyBar key={c.cat} label={c.cat} value={c.receita} max={catMax} />)}
               </Section>
 

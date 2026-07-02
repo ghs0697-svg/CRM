@@ -89,8 +89,12 @@ function brToISO(d) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
 
-export async function getQuizStats() {
+// dias = 30|60|90 restringe o funil/fontes/cards às sessões INICIADAS na janela;
+// vazio/0 = tudo desde o corte 26/05 (comportamento antigo). Sessão sem ts legível
+// é mantida (conservador, igual ao corte).
+export async function getQuizStats(dias) {
   if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
+  const cutoffJanela = Number(dias) > 0 ? Date.now() - Number(dias) * 864e5 : null;
   const auth = new google.auth.GoogleAuth({
     credentials: getCredentials(),
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
@@ -122,7 +126,8 @@ export async function getQuizStats() {
     const dia = cellToDia(r[0]);
 
     let s = sessions.get(sid);
-    if (!s) { s = { maxIdx: -1, wa: false, fonte, dia }; sessions.set(sid, s); }
+    if (!s) { s = { maxIdx: -1, wa: false, fonte, dia, ts: null }; sessions.set(sid, s); }
+    if (ts !== null && (s.ts === null || ts < s.ts)) s.ts = ts; // 1º evento = início da sessão
     // wa NÃO entra no maxIdx: a página-ponte /go também loga step=wa em
     // quiz=metodogh; se contasse, um hit de wa solto inflaria o funil inteiro.
     if (idx >= 0 && idx < IDX_WA && idx > s.maxIdx) s.maxIdx = idx;
@@ -131,7 +136,8 @@ export async function getQuizStats() {
     if (!s.dia && dia) s.dia = dia;
   }
 
-  const vals = [...sessions.values()];
+  const vals = [...sessions.values()]
+    .filter((s) => cutoffJanela === null || s.ts === null || s.ts >= cutoffJanela); // janela de período
   const totalSessions = vals.length; // todos os sids que tocaram o quiz atual (inclui só-wa/ruído)
   // "Reais" = entraram no quiz de fato (>=1 step real). Sessão só-wa (da /go) ou só
   // com step do quiz antigo NÃO conta como início.

@@ -223,6 +223,21 @@ export default function Home() {
 
           return changed ? next : prev;
         });
+
+        // Histórico durável: o servidor guarda callLog por aluno (gravado no
+        // "Chamado"). Se este navegador não tem histórico local pro aluno
+        // (cache limpo / máquina nova), semeia do servidor.
+        setHistory((prevH) => {
+          let changed = false;
+          const next = { ...prevH };
+          for (const sv of serverList) {
+            if (Array.isArray(sv.callLog) && sv.callLog.length && !(next[sv.id]?.length)) {
+              next[sv.id] = sv.callLog;
+              changed = true;
+            }
+          }
+          return changed ? next : prevH;
+        });
       } catch {
         // silencia — dev sem servidor / offline
       }
@@ -284,9 +299,24 @@ export default function Home() {
     );
   };
 
+  // Persistência no servidor (KV): o local continua sendo a UI instantânea;
+  // o PATCH garante que chamado/reaberto sobrevive a limpar o cache/trocar de
+  // máquina. Fire-and-forget: se falhar, o localStorage segura e o próximo
+  // clique re-tenta o estado mais novo.
+  const persistFollowUp = (studentId, tag, patch, log) => {
+    const st = students.find((s) => s.id === studentId);
+    if (!st?.phone) return;
+    fetch("/api/students", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "followup", phone: onlyDigits(st.phone), tag, patch, log }),
+    }).catch(() => {});
+  };
+
   const markAsCalled = (studentId, tag, outcome) => {
     const today = startOfToday().toISOString().split("T")[0];
     updateFollowUp(studentId, tag, { status: "chamado", outcome, calledAt: today });
+    persistFollowUp(studentId, tag, { status: "chamado", outcome, calledAt: today }, { tag, outcome, date: today });
     setHistory((prev) => {
       const list = prev[studentId] || [];
       return {
@@ -299,6 +329,7 @@ export default function Home() {
 
   const reopenFollowUp = (studentId, tag) => {
     updateFollowUp(studentId, tag, { status: "pendente", outcome: null, calledAt: null });
+    persistFollowUp(studentId, tag, { status: "pendente", outcome: null, calledAt: null });
   };
 
   const handleAddStudent = (e) => {
@@ -307,17 +338,22 @@ export default function Home() {
     if (!Number.isFinite(days) || days < 0 || days > 365) return;
     const tag = days === 0 ? "Hoje" : `${days} ${days === 1 ? "dia" : "dias"}`;
     const today = startOfToday().toISOString().split("T")[0];
-    setStudents((prev) => [
-      {
-        id: Date.now(),
-        name: newStudent.name,
-        phone: onlyDigits(newStudent.phone),
-        assignmentDate: today,
-        observations: newStudent.observations,
-        followUps: [{ tag, status: "pendente", outcome: null, calledAt: null }],
-      },
-      ...prev,
-    ]);
+    const novo = {
+      id: Date.now(),
+      name: newStudent.name,
+      phone: onlyDigits(newStudent.phone),
+      assignmentDate: today,
+      observations: newStudent.observations,
+      followUps: [{ tag, status: "pendente", outcome: null, calledAt: null }],
+    };
+    setStudents((prev) => [novo, ...prev]);
+    // Persiste no servidor: aluno manual antes vivia só no localStorage e
+    // sumia ao limpar o cache. Dedup por telefone no upsert do servidor.
+    fetch("/api/students", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(novo),
+    }).catch(() => {});
     setIsAddOpen(false);
     setNewStudent({ name: "", phone: "", days: "7", observations: "" });
   };
@@ -339,6 +375,18 @@ export default function Home() {
           : s,
       ),
     );
+    // Persiste a edição no servidor (busca pelo telefone ANTES da edição).
+    fetch("/api/students", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "edit",
+        oldPhone: onlyDigits(editModal.phoneOriginal || editModal.phone),
+        name: editModal.name,
+        phone: onlyDigits(editModal.phone),
+        observations: editModal.observations,
+      }),
+    }).catch(() => {});
     setEditModal(null);
   };
 
@@ -713,6 +761,7 @@ export default function Home() {
                                 id: student.id,
                                 name: student.name,
                                 phone: student.phone,
+                                phoneOriginal: student.phone,
                                 observations: student.observations || "",
                                 tags: student.followUps.map((f) => f.tag),
                               })

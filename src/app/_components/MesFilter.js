@@ -9,12 +9,13 @@ const label = (m) => {
   return `${MES_NOMES[+mo - 1] || mo}/${y}`;
 };
 
-export default function MesFilter({ meses = [], mesSel }) {
+// Seletor de mês compartilhado (funil, faturamento). `base` é a rota que recebe ?mes=.
+export default function MesFilter({ meses = [], mesSel, base = "/funil" }) {
   const router = useRouter();
   return (
     <select
       value={mesSel}
-      onChange={(e) => router.push(`/funil?mes=${encodeURIComponent(e.target.value)}`)}
+      onChange={(e) => router.push(`${base}?mes=${encodeURIComponent(e.target.value)}`)}
       aria-label="Filtrar por mês"
       style={{
         background: "transparent",

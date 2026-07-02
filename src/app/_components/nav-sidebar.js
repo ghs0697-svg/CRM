@@ -66,10 +66,10 @@ export default function NavSidebar() {
           <span className={styles.icon}>🔥</span>
           <span className={styles.label}>Treinos</span>
         </Link>
-        <a href="/instagram.html" target="_blank" rel="noreferrer" className={styles.navLink} title="Instagram (abre em nova aba)">
+        <Link href="/instagram" className={`${styles.navLink} ${pathname.startsWith("/instagram") ? styles.active : ""}`} title="Instagram (retrato, com data)">
           <span className={styles.icon}>📸</span>
           <span className={styles.label}>Instagram</span>
-        </a>
+        </Link>
         <Link href="/suporte" className={`${styles.navLink} ${pathname.startsWith("/suporte") ? styles.active : ""}`} title="Suporte">
           <span className={styles.icon}>💬</span>
           <span className={styles.label}>Suporte</span>

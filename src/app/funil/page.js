@@ -1,5 +1,5 @@
 import { getFunilStats } from "@/lib/funil";
-import MesFilter from "./MesFilter";
+import MesFilter from "../_components/MesFilter";
 import styles from "./funil.module.css";
 
 const MES_NOMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];

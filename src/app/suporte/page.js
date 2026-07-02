@@ -36,11 +36,15 @@ const norm = (s) =>
 
 const PROTO = "https://app.metodogh.com.br/?sheet=";
 
+// Mesma chave do servidor (src/lib/suporte-status.js) — estável entre fetches.
+const itemKey = (it) => `${it.kind}|${it.timestamp}|${it.sheetId || it.aluno || ""}`;
+
 export default function SuportePage() {
   const [data, setData] = useState({ ajustes: [], feedbacks: [], chats: [] });
+  const [resolvidos, setResolvidos] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filtro, setFiltro] = useState("todos"); // todos | ajuste | feedback | chat
+  const [filtro, setFiltro] = useState("todos"); // todos | ajuste | feedback | chat | resolvidos
   const [busca, setBusca] = useState("");
 
   useEffect(() => {
@@ -50,8 +54,10 @@ export default function SuportePage() {
         const r = await fetch("/api/suporte", { cache: "no-store" });
         const j = await r.json();
         if (!alive) return;
-        if (j.ok) setData({ ajustes: j.ajustes || [], feedbacks: j.feedbacks || [], chats: j.chats || [] });
-        else setError(j.error || "erro");
+        if (j.ok) {
+          setData({ ajustes: j.ajustes || [], feedbacks: j.feedbacks || [], chats: j.chats || [] });
+          setResolvidos(j.resolvidos || {});
+        } else setError(j.error || "erro");
       } catch (e) {
         if (alive) setError(String(e.message || e));
       } finally {
@@ -61,18 +67,51 @@ export default function SuportePage() {
     return () => { alive = false; };
   }, []);
 
+  // Otimista: atualiza a UI na hora e persiste no servidor; se falhar, desfaz.
+  async function toggleResolvido(it) {
+    const key = itemKey(it);
+    const was = !!resolvidos[key];
+    setResolvidos((m) => {
+      const n = { ...m };
+      if (was) delete n[key];
+      else n[key] = { em: new Date().toISOString() };
+      return n;
+    });
+    try {
+      const r = await fetch("/api/suporte", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, resolved: !was }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    } catch {
+      setResolvidos((m) => {
+        const n = { ...m };
+        if (was) n[key] = { em: new Date().toISOString() };
+        else delete n[key];
+        return n;
+      });
+    }
+  }
+
   const items = useMemo(() => {
     let all = [...data.ajustes, ...data.feedbacks, ...data.chats];
     all.sort((a, b) => parseTs(b.timestamp) - parseTs(a.timestamp));
-    if (filtro !== "todos") all = all.filter((i) => i.kind === filtro);
+    if (filtro === "resolvidos") all = all.filter((i) => resolvidos[itemKey(i)]);
+    else {
+      all = all.filter((i) => !resolvidos[itemKey(i)]); // padrão: esconde tratados
+      if (filtro !== "todos") all = all.filter((i) => i.kind === filtro);
+    }
     const q = norm(busca).trim();
     if (q) all = all.filter((i) => norm(i.aluno).includes(q) || norm(i.mensagem).includes(q) || norm(i.resposta).includes(q));
     return all;
-  }, [data, filtro, busca]);
+  }, [data, filtro, busca, resolvidos]);
 
-  const nAj = data.ajustes.length;
-  const nFb = data.feedbacks.length;
-  const nCh = data.chats.length;
+  const pendente = (i) => !resolvidos[itemKey(i)];
+  const nAj = data.ajustes.filter(pendente).length;
+  const nFb = data.feedbacks.filter(pendente).length;
+  const nCh = data.chats.filter(pendente).length;
+  const nRes = Object.keys(resolvidos).length;
 
   return (
     <div className={styles.page}>
@@ -86,6 +125,7 @@ export default function SuportePage() {
         <button className={`${styles.chip} ${filtro === "ajuste" ? styles.active : ""}`} onClick={() => setFiltro("ajuste")}>🔧 Ajustes ({nAj})</button>
         <button className={`${styles.chip} ${filtro === "feedback" ? styles.active : ""}`} onClick={() => setFiltro("feedback")}>💬 Feedbacks ({nFb})</button>
         <button className={`${styles.chip} ${filtro === "chat" ? styles.active : ""}`} onClick={() => setFiltro("chat")}>🤖 Chatbot ({nCh})</button>
+        <button className={`${styles.chip} ${filtro === "resolvidos" ? styles.active : ""}`} onClick={() => setFiltro("resolvidos")}>✅ Resolvidos ({nRes})</button>
         <input className={styles.search} placeholder="Buscar aluno ou texto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
 
@@ -106,6 +146,13 @@ export default function SuportePage() {
                   <span className={`${styles.status} ${styles["st_" + (it.status || "pending")] || ""}`}>{it.status || "pending"}</span>
                 )}
                 <span className={styles.ts}>{fmtTs(it.timestamp)}</span>
+                <button
+                  onClick={() => toggleResolvido(it)}
+                  title={resolvidos[itemKey(it)] ? "Voltar pra fila" : "Marcar como resolvido (só no painel, não mexe no app do aluno)"}
+                  style={{ marginLeft: "auto", border: "1px solid var(--border, #d1d5db)", background: "transparent", borderRadius: 6, padding: "0.15rem 0.5rem", cursor: "pointer", fontSize: "0.78rem" }}
+                >
+                  {resolvidos[itemKey(it)] ? "↩ Reabrir" : "✓ Resolver"}
+                </button>
               </div>
               <div className={styles.aluno}>{it.aluno || "—"}</div>
               <div className={styles.msg}>{it.mensagem || "—"}</div>

@@ -32,7 +32,9 @@ const mDataBR = (v) => {
 };
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
-export async function getFaturamentoStats() {
+// mes = "YYYY-MM" filtra cards/planos/categorias pra aquele mês · "todos"/vazio = tudo
+// (comportamento antigo). A série "porMes" fica sempre completa (contexto do gráfico).
+export async function getFaturamentoStats(mes) {
   if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
   const auth = new google.auth.GoogleAuth({
     credentials: getCredentials(),
@@ -42,24 +44,34 @@ export async function getFaturamentoStats() {
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB}!A2:V` });
   const rows = res.data.values || [];
 
-  const porMesMap = new Map(); // "YYYY-MM" -> { receita, vendas }
-  const porPlano = new Map();
-  const porCategoria = new Map();
-  let receitaTotal = 0, vendasTotal = 0;
-
+  // 1º passe: vendas válidas com o mês de cada uma (pra montar a lista de meses).
+  const vendas = [];
   for (const r of rows) {
     const m = mDataBR(r[2]); // col C data de compra
     const valor = parseMoney(r[8]); // col I valor do plano
     if (!m || !valor) continue;
-    const ym = `${m[3]}-${m[2]}`;
-    const plano = String(r[6] || "—").trim() || "—"; // col G
-    const cat = String(r[21] || "Padrão").trim() || "Padrão"; // col V
+    vendas.push({
+      ym: `${m[3]}-${m[2]}`,
+      valor,
+      plano: String(r[6] || "—").trim() || "—", // col G
+      cat: String(r[21] || "Padrão").trim() || "Padrão", // col V
+    });
+  }
+  const meses = [...new Set(vendas.map((v) => v.ym))].sort().reverse();
+  const mesSel = mes && meses.includes(mes) ? mes : "todos";
 
-    const pm = porMesMap.get(ym) || { receita: 0, vendas: 0 };
-    pm.receita += valor; pm.vendas += 1; porMesMap.set(ym, pm);
-    porPlano.set(plano, (porPlano.get(plano) || 0) + valor);
-    porCategoria.set(cat, (porCategoria.get(cat) || 0) + valor);
-    receitaTotal += valor; vendasTotal += 1;
+  const porMesMap = new Map(); // "YYYY-MM" -> { receita, vendas } (série completa)
+  const porPlano = new Map();
+  const porCategoria = new Map();
+  let receitaTotal = 0, vendasTotal = 0;
+
+  for (const v of vendas) {
+    const pm = porMesMap.get(v.ym) || { receita: 0, vendas: 0 };
+    pm.receita += v.valor; pm.vendas += 1; porMesMap.set(v.ym, pm);
+    if (mesSel !== "todos" && v.ym !== mesSel) continue; // filtro só nos agregados
+    porPlano.set(v.plano, (porPlano.get(v.plano) || 0) + v.valor);
+    porCategoria.set(v.cat, (porCategoria.get(v.cat) || 0) + v.valor);
+    receitaTotal += v.valor; vendasTotal += 1;
   }
 
   const porMes = [...porMesMap.entries()]
@@ -76,7 +88,7 @@ export async function getFaturamentoStats() {
   const ticketMedio = vendasTotal ? receitaTotal / vendasTotal : 0;
   const mesAtual = porMes.length ? porMes[porMes.length - 1] : { receita: 0, vendas: 0 };
 
-  return { receitaTotal, vendasTotal, ticketMedio, mesAtual, porMes, planos, categorias };
+  return { receitaTotal, vendasTotal, ticketMedio, mesAtual, porMes, planos, categorias, meses, mesSel };
 }
 
 // Vendas por DIA (pro filtro de período no painel de métricas).

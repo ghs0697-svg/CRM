@@ -130,6 +130,51 @@ export async function addStudent(student) {
   return s;
 }
 
+/**
+ * Atualiza um follow-up do aluno (match por telefone, suffix 10). Usado pela
+ * página de Retornos pra persistir "chamado/reaberto" no servidor — antes esse
+ * estado vivia só no localStorage e sumia ao limpar o cache do navegador.
+ * logEntry (opcional) vira histórico durável em student.callLog (máx 50).
+ * Retorna o aluno atualizado ou null se não achou.
+ */
+export async function patchFollowUp(phone, tag, patch, logEntry) {
+  const phoneKey = (s) => String(s || "").replace(/\D/g, "").slice(-10);
+  const target = phoneKey(phone);
+  if (target.length < 8) return null;
+  const list = useKV ? await readKV() : await readFS();
+  const idx = list.findIndex((s) => phoneKey(s.phone) === target);
+  if (idx === -1) return null;
+  const st = list[idx];
+  st.followUps = (st.followUps || []).map((f) => (f.tag === tag ? { ...f, ...patch } : f));
+  if (logEntry) st.callLog = [logEntry, ...(st.callLog || [])].slice(0, 50);
+  list[idx] = st;
+  if (useKV) await writeKV(list);
+  else await writeFS(list);
+  return st;
+}
+
+/**
+ * Edita dados de contato do aluno (nome/telefone/observações). oldPhone é a
+ * chave de busca (o telefone pode estar sendo corrigido). Só sobrescreve os
+ * campos enviados. Retorna o aluno ou null se não achou.
+ */
+export async function updateStudentByPhone(oldPhone, fields) {
+  const phoneKey = (s) => String(s || "").replace(/\D/g, "").slice(-10);
+  const target = phoneKey(oldPhone);
+  if (target.length < 8) return null;
+  const list = useKV ? await readKV() : await readFS();
+  const idx = list.findIndex((s) => phoneKey(s.phone) === target);
+  if (idx === -1) return null;
+  const st = list[idx];
+  if (fields.name != null) st.name = String(fields.name);
+  if (fields.phone != null) st.phone = String(fields.phone).replace(/\D/g, "");
+  if (fields.observations != null) st.observations = String(fields.observations);
+  list[idx] = st;
+  if (useKV) await writeKV(list);
+  else await writeFS(list);
+  return st;
+}
+
 /** Apaga TUDO do storage (FS ou KV). Use com token na rota DELETE. */
 export async function clearAll() {
   if (useKV) {
