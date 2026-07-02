@@ -24,7 +24,12 @@ function parseMoney(v) {
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : 0;
 }
-const mDataBR = (v) => String(v || "").trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+// Tolerante a dia/mês com 1 dígito ("1/7/2026", digitação manual na mestre) pra
+// não descartar a venda em silêncio. Grupos já saem com padding (m[1]=DD, m[2]=MM).
+const mDataBR = (v) => {
+  const m = String(v || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? [m[0], m[1].padStart(2, "0"), m[2].padStart(2, "0"), m[3]] : null;
+};
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 export async function getFaturamentoStats() {

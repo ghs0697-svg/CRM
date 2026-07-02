@@ -62,7 +62,7 @@ function serialToMs(num) {
 function cellToTs(cell) {
   if (cell == null || cell === "") return null;
   const s = String(cell).trim();
-  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1]);
   const num = parseFloat(s.replace(",", "."));
   if (!isNaN(num) && num > 30000 && num < 90000) return serialToMs(num);
@@ -71,8 +71,8 @@ function cellToTs(cell) {
 // col A mista → "DD/MM/YYYY" pro agrupamento por dia.
 function cellToDia(cell) {
   const s = String(cell || "").trim();
-  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if (m) return `${m[1]}/${m[2]}/${m[3]}`;
+  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[3]}`;
   const num = parseFloat(s.replace(",", "."));
   if (!isNaN(num) && num > 30000 && num < 90000) {
     const ms = serialToMs(num);

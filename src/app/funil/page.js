@@ -38,6 +38,16 @@ function Bar({ label, count, pct, max }) {
 const fmt = (n) => Number(n || 0).toLocaleString("pt-BR");
 const fpct = (n) => `${Number(n || 0).toFixed(1).replace(".", ",")}%`;
 
+// Dias desde a última coleta do Linktree (ts vem como "YYYY-MM-DDTHH:mm..." do coletor).
+// null = sem dado. Comparação no fuso de SP pra não inflar 1 dia à noite.
+function linktreeIdadeDias(ts) {
+  const m = String(ts || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const dias = Math.floor((new Date(`${hoje}T00:00:00`) - new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00`)) / 86400000);
+  return Number.isFinite(dias) ? dias : null;
+}
+
 export default async function FunilPage({ searchParams }) {
   const sp = (await searchParams) || {};
   const mes = typeof sp.mes === "string" ? sp.mes : undefined;
@@ -109,6 +119,16 @@ export default async function FunilPage({ searchParams }) {
 
               {data.linktree?.length > 0 && (
                 <Section title="Linktree — cliques por link">
+                  {(() => {
+                    const idade = linktreeIdadeDias(data.linktreeAtualizado);
+                    if (idade == null || idade < 2) return null;
+                    return (
+                      <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", color: "#991b1b", borderRadius: 8, padding: "0.6rem 0.9rem", marginBottom: "0.75rem", fontSize: "0.85rem" }}>
+                        ⚠️ Coleta do Linktree parada há <strong>{idade} dias</strong> (sessão do tr.ee expirou). Os cliques abaixo estão congelados.
+                        Pra reativar, no Mac: <code>node ~/webfit-mcp/linktree/login-linktree.mjs</code>, faz o login e fecha o Chrome; o cron das 05:00 volta sozinho.
+                      </div>
+                    );
+                  })()}
                   <div className={styles.tableWrap}>
                     <table className={styles.table}>
                       <thead>

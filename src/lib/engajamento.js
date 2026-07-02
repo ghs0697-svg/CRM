@@ -31,8 +31,11 @@ export async function getEngajamentoStats() {
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB}!A2:K` });
   const rows = res.data.values || [];
 
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
+  // "Hoje" no fuso de São Paulo (a Vercel roda em UTC: das 21h à meia-noite BRT o
+  // new Date() cru já era amanhã e inflava diasSemTreinar em 1). Espelha o
+  // todayISO() do follow-sumidos.js.
+  const hojeISO = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const hoje = new Date(`${hojeISO}T00:00:00`);
   const diasAtras = (d) => Math.floor((hoje - d) / 86400000);
 
   // Estado por aluno (chave = SheetId; nome só pra exibir). Guarda o registro
@@ -67,7 +70,27 @@ export async function getEngajamentoStats() {
     }
   }
 
-  const lista = [...alunos.entries()].map(([sid, a]) => ({ sid, ...a, diasSemTreinar: diasAtras(a.lastData) }));
+  // Join com CONTROLE ALUNOS por SheetId (link col W) → status + telefone.
+  // Serve pra (a) tirar cancelado/pausado/vencido do "Em risco" (ruído: churn é
+  // tratado em outro fluxo) e (b) dar o WhatsApp na tabela pra virar ação direta.
+  // REFINO guardado: se a leitura falhar, segue sem filtro/telefone (não derruba a página).
+  const bySid = new Map();
+  try {
+    const ca = (await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `CONTROLE ALUNOS!A2:W` })).data.values || [];
+    for (const r of ca) {
+      const m = String(r[22] || "").match(/[?&]sheet=([\w-]+)/);
+      if (!m) continue;
+      // E.164 igual ao follow-sumidos: BR = 55+DDD+número; estrangeiro mantém DDI.
+      const d = String(r[1] || "").replace(/\D/g, "");
+      const telefone = !d ? "" : d.startsWith("55") ? d : d.length <= 11 ? "55" + d : d;
+      bySid.set(m[1], { telefone, status: String(r[10] || "").trim() });
+    }
+  } catch { /* segue sem join */ }
+
+  const lista = [...alunos.entries()].map(([sid, a]) => {
+    const cm = bySid.get(sid);
+    return { sid, ...a, diasSemTreinar: diasAtras(a.lastData), telefone: cm?.telefone || "", status: cm?.status || "" };
+  });
   const totalAlunos = lista.length;
   const ativos7 = lista.filter((a) => a.diasSemTreinar <= 7).length;
   const ativos30 = lista.filter((a) => a.diasSemTreinar <= 30).length;
@@ -75,8 +98,11 @@ export async function getEngajamentoStats() {
   const freqMedia = freqsAtivas.length ? Math.round((freqsAtivas.reduce((s, x) => s + x, 0) / freqsAtivas.length) * 10) / 10 : 0;
 
   // Em risco: treinavam mas pararam há 10–45 dias (recuperável). Mais recente primeiro.
+  // Só plano ATIVO: cancelado/pausado/vencido não é "em risco", é churn (outro fluxo).
+  // Sem join (bySid vazio) mantém todo mundo, comportamento antigo.
   const emRisco = lista
     .filter((a) => a.diasSemTreinar >= 10 && a.diasSemTreinar <= 45 && a.totalDias >= 2)
+    .filter((a) => bySid.size === 0 || a.status === "Ativo")
     .sort((a, b) => a.diasSemTreinar - b.diasSemTreinar)
     .slice(0, 25);
 

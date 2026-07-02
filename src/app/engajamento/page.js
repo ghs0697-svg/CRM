@@ -58,7 +58,7 @@ export default async function EngajamentoPage() {
                   <div className={styles.tableWrap}>
                     <table className={styles.table}>
                       <thead>
-                        <tr><th>Aluno</th><th>Sem treinar</th><th>Total dias</th><th>Recorde</th></tr>
+                        <tr><th>Aluno</th><th>Sem treinar</th><th>Total dias</th><th>Recorde</th><th>Contato</th></tr>
                       </thead>
                       <tbody>
                         {data.emRisco.map((a) => (
@@ -67,6 +67,15 @@ export default async function EngajamentoPage() {
                             <td><strong className={styles.risk}>{a.diasSemTreinar}d</strong></td>
                             <td>{fmt(a.totalDias)}</td>
                             <td>{fmt(a.recorde)}</td>
+                            <td>
+                              {a.telefone ? (
+                                <a href={`https://wa.me/${a.telefone}`} target="_blank" rel="noreferrer" title="Chamar no WhatsApp" style={{ textDecoration: "none" }}>
+                                  💬 WhatsApp
+                                </a>
+                              ) : (
+                                <span style={{ opacity: 0.4 }}>—</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

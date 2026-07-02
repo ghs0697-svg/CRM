@@ -16,11 +16,17 @@ function getCredentials() {
 }
 
 const numInt = (v) => parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10) || 0;
-const isDataBR = (v) => /^\d{2}\/\d{2}\/\d{4}$/.test(String(v || "").trim());
+// Tolerante a dia/mês com 1 dígito ("1/7/2026") pra não descartar linha em silêncio.
+const isDataBR = (v) => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(v || "").trim());
 const brToISO = (d) => {
-  const m = String(d).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+  const m = String(d).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : "";
 };
+// "Hoje" no fuso de São Paulo (a Vercel roda em UTC: das 21h à meia-noite BRT o
+// toISOString() já virou o dia seguinte e deixava passar a linha zerada de amanhã).
+// Espelha o todayISO() do follow-sumidos.js.
+const todayISO = () =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
 export async function getFunilStats(mes) {
   const auth = new google.auth.GoogleAuth({
@@ -50,7 +56,7 @@ export async function getFunilStats(mes) {
   }
   dias.sort((a, b) => brToISO(a.data).localeCompare(brToISO(b.data)));
   // Remove dias FUTUROS (a planilha pré-preenche datas adiante com zeros).
-  const hojeISO = new Date().toISOString().slice(0, 10);
+  const hojeISO = todayISO();
   const diasReais = dias.filter((d) => { const iso = brToISO(d.data); return iso && iso <= hojeISO; });
 
   // Filtro de mês. meses = YYYY-MM disponíveis (mais recente primeiro).
