@@ -102,7 +102,12 @@ export async function getFunilStats(mes) {
       if (!linktreeAtualizado && r[0]) linktreeAtualizado = String(r[0]).trim();
     }
     linktree.sort((a, b) => b.c7 - a.c7 || b.total - a.total);
-  } catch { linktree = []; }
+  } catch (e) {
+    // Não engole calado: se a aba LINKTREE sumir/renomear ou a permissão cair,
+    // isso tem que aparecer no log do servidor (antes desaparecia sem rastro).
+    console.error("[funil] leitura da aba LINKTREE falhou:", (e && e.message) || e);
+    linktree = [];
+  }
 
   const recent = mesSel === "todos" ? diasUsados.slice(-30).reverse() : [...diasUsados].reverse();
   return { totals, recent, linktree, linktreeAtualizado, meses, mesSel };
