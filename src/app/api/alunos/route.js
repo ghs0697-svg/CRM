@@ -20,10 +20,28 @@ export async function GET() {
       return new Map();
     });
     const hoje = Date.now();
+    const hojeMeiaNoite = new Date(); hojeMeiaNoite.setHours(0, 0, 0, 0);
     const enriched = students.map((s) => {
       const insight = getInsight(s.contato);
       const nota = notas.find((n) => phoneSuffixMatch(s.contato, n.digits));
       const out = { ...s };
+
+      // Vencimento pelo PROTOCOLO (col AB, contrato Sala #512): estica pelo gap
+      // compra->entrega. Fallback pra col J (compra) enquanto a coluna não existe
+      // ou vem vazia. Date-validated pra não exibir lixo se a coluna vier desalinhada.
+      const vp = String(s.vencimentoProtocolo || "").trim();
+      const mvp = vp.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      out.dataVencimentoCompra = s.dataVencimento; // preserva a base compra (col J)
+      if (mvp) {
+        out.dataVencimento = vp;
+        // Reativação pelo protocolo: quem estava "Vencido" só pela data de compra
+        // mas o vencimento pelo protocolo ainda é futuro volta a "Ativo" (#512).
+        if (s.statusPlano === "Vencido") {
+          const vd = new Date(+mvp[3], +mvp[2] - 1, +mvp[1]);
+          if (vd >= hojeMeiaNoite) { out.statusPlanoMestre = s.statusPlano; out.statusPlano = "Ativo"; }
+        }
+      }
+
       if (insight) out.insight = insight;
       if (nota) out.notaSuporte = { nota: nota.nota, atualizado: nota.atualizado };
       const sid = (String(s.linkSite || "").match(/[?&]sheet=([\w-]+)/) || [])[1];

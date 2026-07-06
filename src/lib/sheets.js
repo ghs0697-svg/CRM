@@ -2,7 +2,7 @@ import { google } from "googleapis";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
 const TAB = process.env.GOOGLE_SHEETS_TAB || ""; // vazio = primeira aba
-const RANGE = TAB ? `${TAB}!A2:W` : "A2:W";
+const RANGE = TAB ? `${TAB}!A2:AB` : "A2:AB";
 
 // Mapeamento posicional Sheets → camelCase.
 // A ordem AQUI deve bater 1:1 com a ordem FÍSICA das colunas A..W na planilha.
@@ -30,6 +30,11 @@ const COLUMN_KEYS = [
   "mesesExtras",           // U
   "categoria",             // V
   "linkSite",              // W
+  "renovacao",             // X  Renovação?
+  "canceladoEm",           // Y  Cancelado em
+  "pausadoEm",             // Z  Pausado em
+  "diasExtras",            // AA Dias extras
+  "vencimentoProtocolo",   // AB formula — Vencimento (protocolo): base D(entrega) fallback C(compra). Contrato Sala #512.
 ];
 
 let cachedClient = null;

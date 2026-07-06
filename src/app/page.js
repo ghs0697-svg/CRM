@@ -194,11 +194,14 @@ function StatCard({ color, icon, value, label, onClick, active }) {
 // (vencimento − 1 mês, quando o raio-x dispara) já chegou, e ainda não venceu.
 // = os ~30 dias antes do vencimento. É a lista que o funcionário fica em cima.
 function emJanelaRenovacao(s, hoje) {
-  if (s.statusPlano !== "Ativo") return false;
+  if (s.statusPlano !== "Ativo") return false; // status já reflete a reativação pelo protocolo (API, #512)
+  // venc = já é o vencimento efetivo (col AB "Vencimento (protocolo)" com fallback J,
+  // aplicado na API). A janela começa 1 mês antes dele (espelha a col L, mas na base
+  // nova) pra bater com a data que o painel mostra e com o disparo do RaioX.
   const venc = parsePtBrDate(s.dataVencimento);
-  const contato = parsePtBrDate(s.dataContatoRenovacao);
-  if (!venc || !contato) return false;
-  return contato <= hoje && venc >= hoje;
+  if (!venc) return false;
+  const inicio = new Date(venc); inicio.setMonth(inicio.getMonth() - 1);
+  return inicio <= hoje && venc >= hoje;
 }
 
 function NotesDrawer({ insight, notaSuporte, nome, open, onClose }) {
