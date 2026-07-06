@@ -34,11 +34,21 @@ export async function GET() {
       out.dataVencimentoCompra = s.dataVencimento; // preserva a base compra (col J)
       if (mvp) {
         out.dataVencimento = vp;
+        const vd = new Date(+mvp[3], +mvp[2] - 1, +mvp[1]);
+        const p = (n) => String(n).padStart(2, "0");
+        // Contato p/ renovação = 1 mês antes do venc-protocolo. As colunas-fórmula
+        // L/N do mestre seguem J-based (compra) de propósito (#512/#527); aqui o
+        // painel exibe tudo no calendário do PROTOCOLO pra não contradizer o venc/status.
+        const cd = new Date(vd); cd.setMonth(cd.getMonth() - 1);
+        out.dataContatoRenovacaoCompra = s.dataContatoRenovacao;
+        out.dataContatoRenovacao = `${p(cd.getDate())}/${p(cd.getMonth() + 1)}/${cd.getFullYear()}`;
         // Reativação pelo protocolo: quem estava "Vencido" só pela data de compra
-        // mas o vencimento pelo protocolo ainda é futuro volta a "Ativo" (#512).
-        if (s.statusPlano === "Vencido") {
-          const vd = new Date(+mvp[3], +mvp[2] - 1, +mvp[1]);
-          if (vd >= hojeMeiaNoite) { out.statusPlanoMestre = s.statusPlano; out.statusPlano = "Ativo"; }
+        // mas o vencimento pelo protocolo ainda é futuro volta a "Ativo" (#512), e
+        // a ação "Plano Vencido!" (col N, J-based) vira "OK" pra não contradizer.
+        if (s.statusPlano === "Vencido" && vd >= hojeMeiaNoite) {
+          out.statusPlanoMestre = s.statusPlano; out.statusPlano = "Ativo";
+          out.acaoNecessariaMestre = s.acaoNecessaria;
+          if (String(s.acaoNecessaria || "").toLowerCase().includes("vencid")) out.acaoNecessaria = "OK";
         }
       }
 
