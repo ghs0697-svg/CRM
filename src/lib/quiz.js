@@ -89,12 +89,11 @@ function brToISO(d) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
 
-// dias = 30|60|90 restringe o funil/fontes/cards às sessões INICIADAS na janela;
-// vazio/0 = tudo desde o corte 26/05 (comportamento antigo). Sessão sem ts legível
-// é mantida (conservador, igual ao corte).
-export async function getQuizStats(dias) {
+// mes = "YYYY-MM" restringe funil/fontes/cards/por-dia às sessões INICIADAS naquele
+// mês (mesmo padrão do /funil, pra cruzar as tabelas dia a dia) · "todos" = tudo
+// desde o corte 26/05 · vazio = default no mês mais recente com sessão.
+export async function getQuizStats({ mes } = {}) {
   if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
-  const cutoffJanela = Number(dias) > 0 ? Date.now() - Number(dias) * 864e5 : null;
   const auth = new google.auth.GoogleAuth({
     credentials: getCredentials(),
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
@@ -136,8 +135,15 @@ export async function getQuizStats(dias) {
     if (!s.dia && dia) s.dia = dia;
   }
 
-  const vals = [...sessions.values()]
-    .filter((s) => cutoffJanela === null || s.ts === null || s.ts >= cutoffJanela); // janela de período
+  // Filtro de mês (padrão do /funil): meses disponíveis = meses com sessão iniciada.
+  // Sessão sem dia legível só entra em "todos" (não dá pra atribuir a um mês).
+  const all = [...sessions.values()];
+  const meses = [...new Set(all.map((s) => brToISO(s.dia).slice(0, 7)).filter(Boolean))].sort().reverse();
+  let mesSel;
+  if (mes === "todos") mesSel = "todos";
+  else if (mes && meses.includes(mes)) mesSel = mes;
+  else mesSel = meses[0] || "todos";
+  const vals = mesSel === "todos" ? all : all.filter((s) => brToISO(s.dia).slice(0, 7) === mesSel);
   const totalSessions = vals.length; // todos os sids que tocaram o quiz atual (inclui só-wa/ruído)
   // "Reais" = entraram no quiz de fato (>=1 step real). Sessão só-wa (da /go) ou só
   // com step do quiz antigo NÃO conta como início.
@@ -165,13 +171,28 @@ export async function getQuizStats(dias) {
     .map(([fonte, count]) => ({ fonte, count, pct: iniciaram ? round1((count / iniciaram) * 100) : 0 }))
     .sort((a, b) => b.count - a.count);
 
-  // Sessões novas por dia (últimos 30 com dado)
+  // Por dia (dia de INÍCIO da sessão): quantos responderam, quantos concluíram e
+  // quantos clicaram no WhatsApp — é a linha que o GH cruza com a tabela do /funil
+  // (leads que entraram no Whats/frio no mesmo dia). count mantém o nome antigo
+  // (gráfico de barras). Em mês selecionado mostra o mês inteiro; "todos" = últimos 30.
+  const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
   const diaMap = new Map();
-  for (const s of reais) { if (s.dia) diaMap.set(s.dia, (diaMap.get(s.dia) || 0) + 1); }
+  for (const s of reais) {
+    if (!s.dia) continue;
+    const d = diaMap.get(s.dia) || { count: 0, concluiram: 0, wa: 0 };
+    d.count += 1;
+    if (s.maxIdx >= IDX_DONE) d.concluiram += 1;
+    if (s.wa) d.wa += 1;
+    diaMap.set(s.dia, d);
+  }
   const porDia = [...diaMap.entries()]
-    .map(([dia, count]) => ({ dia, count }))
-    .sort((a, b) => brToISO(a.dia).localeCompare(brToISO(b.dia)))
-    .slice(-30);
+    .map(([dia, d]) => {
+      const iso = brToISO(dia);
+      const wd = iso ? new Date(`${iso}T12:00:00`).getDay() : null;
+      return { dia, semana: wd === null ? "" : SEMANA[wd], ...d };
+    })
+    .sort((a, b) => brToISO(a.dia).localeCompare(brToISO(b.dia)));
+  const porDiaJanela = mesSel === "todos" ? porDia.slice(-30) : porDia;
 
   // Outras landings (fora do quiz metodogh) — vêm da MESMA LOG QUIZ com col B = tag.
   // Absorve a antiga aba FONTES da mestre (CRM = fonte única). step=click (cliques de
@@ -210,6 +231,7 @@ export async function getQuizStats(dias) {
   return {
     totalSessions, totalEventos, descartadosVelho,
     iniciaram, concluiram, taxaConclusao, waCount, conversaoWa,
-    funil, porFonte, porDia, outrasLandings,
+    funil, porFonte, porDia: porDiaJanela, outrasLandings,
+    meses, mesSel,
   };
 }
