@@ -97,13 +97,13 @@ export default async function FunilPage({ searchParams }) {
                     <table className={styles.table}>
                       <thead>
                         <tr>
-                          <th>Entrou em</th><th>Entraram</th><th>→ Morno</th><th>→ Quente</th><th>→ Link</th>
+                          <th>{data.safra.granularidade === "semana" ? "Semana" : "Entrou em"}</th><th>Entraram</th><th>→ Morno</th><th>→ Quente</th><th>→ Link</th>
                         </tr>
                       </thead>
                       <tbody>
                         {data.safra.dias.map((d) => (
                           <tr key={d.dia}>
-                            <td>{d.dia.split("-").reverse().join("/")}</td>
+                            <td>{d.label}</td>
                             <td><strong>{fmt(d.entraram)}</strong></td>
                             <td>{fmt(d.morno)} <em style={{ opacity: 0.6 }}>({fpct(d.pctMorno)})</em></td>
                             <td>{fmt(d.quente)} <em style={{ opacity: 0.6 }}>({fpct(d.pctQuente)})</em></td>
@@ -114,7 +114,7 @@ export default async function FunilPage({ searchParams }) {
                     </table>
                   </div>
                   <p style={{ fontSize: "0.8rem", opacity: 0.6, marginTop: "0.5rem" }}>
-                    Deduplicado por lead (1 pessoa = 1 linha, re-entradas colapsam). “Entrou em” = dia do 1º contato; as % são desse grupo que chegou a cada degrau ao longo do tempo, não no mesmo dia. Quente pode passar Morno em safras onde o lead pula etapa (pediu preço direto). Atualiza sozinho de hora em hora.
+                    Deduplicado por lead (1 pessoa = 1 linha, re-entradas colapsam). Agrupado por {data.safra.granularidade === "semana" ? "semana de entrada (escolha um mês pra ver dia a dia)" : "dia de entrada"}; as % são desse grupo que chegou a cada degrau ao longo do tempo, não no mesmo dia. Quente pode passar Morno quando o lead pula etapa (pediu preço direto). Atualiza sozinho de hora em hora.
                   </p>
                 </Section>
               )}

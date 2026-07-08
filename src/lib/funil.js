@@ -27,6 +27,14 @@ const brToISO = (d) => {
 // Espelha o todayISO() do follow-sumidos.js.
 const todayISO = () =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+// Segunda-feira (ISO) da semana de uma data YYYY-MM-DD — pra agrupar safras por semana.
+const mondayOf = (iso) => {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const ddmm = (iso) => { const m = String(iso).match(/^\d{4}-(\d{2})-(\d{2})$/); return m ? `${m[2]}/${m[1]}` : iso; };
 
 export async function getFunilStats(mes) {
   const auth = new google.auth.GoogleAuth({
@@ -140,10 +148,27 @@ export async function getFunilStats(mes) {
   }), { entraram: 0, frio: 0, morno: 0, quente: 0, link: 0 });
   const safraResumo = mesSel === "todos" && safraTotal ? safraTotal : somaMes;
   const cpct = (n) => (safraResumo.entraram ? Math.round((n / safraResumo.entraram) * 1000) / 10 : 0);
+  // Granularidade adaptativa: visão geral ("todos") agrupa por SEMANA (suaviza o
+  // ruído do dia a dia, ~14-30 leads/dia); mês selecionado mostra DIA (detalhe).
+  const granularidade = mesSel === "todos" ? "semana" : "dia";
+  let linhas;
+  if (granularidade === "semana") {
+    const wk = new Map();
+    for (const d of safraNoMes) {
+      const k = mondayOf(d.dia);
+      const c = wk.get(k) || { dia: k, label: `sem. ${ddmm(k)}`, entraram: 0, frio: 0, morno: 0, quente: 0, link: 0 };
+      c.entraram += d.entraram; c.frio += d.frio; c.morno += d.morno; c.quente += d.quente; c.link += d.link;
+      wk.set(k, c);
+    }
+    linhas = [...wk.values()].sort((a, b) => a.dia.localeCompare(b.dia)).slice(-12);
+  } else {
+    linhas = safraNoMes.map((d) => ({ ...d, label: d.dia.split("-").reverse().join("/") }));
+  }
   const safra = {
     disponivel: safraDias.length > 0,
+    granularidade,
     resumo: { ...safraResumo, pctFrio: cpct(safraResumo.frio), pctMorno: cpct(safraResumo.morno), pctQuente: cpct(safraResumo.quente), pctLink: cpct(safraResumo.link) },
-    dias: (mesSel === "todos" ? safraNoMes.slice(-30) : safraNoMes)
+    dias: linhas
       .map((d) => ({ ...d, pctMorno: d.entraram ? Math.round((d.morno / d.entraram) * 1000) / 10 : 0, pctQuente: d.entraram ? Math.round((d.quente / d.entraram) * 1000) / 10 : 0, pctLink: d.entraram ? Math.round((d.link / d.entraram) * 1000) / 10 : 0 }))
       .reverse(),
   };
