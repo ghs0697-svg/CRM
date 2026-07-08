@@ -101,25 +101,26 @@ export default async function QuizPage({ searchParams }) {
                       <tr style={{ textAlign: "left", opacity: 0.6 }}>
                         <th style={{ padding: "6px 8px" }}>Data</th>
                         <th style={{ padding: "6px 8px" }}>Dia</th>
-                        <th style={{ padding: "6px 8px", textAlign: "right" }}>Iniciaram o quiz</th>
-                        <th style={{ padding: "6px 8px", textAlign: "right" }}>Concluíram</th>
+                        <th style={{ padding: "6px 8px", textAlign: "right" }}>Iniciaram</th>
+                        <th style={{ padding: "6px 8px", textAlign: "right" }}>Chegaram ao final</th>
                         <th style={{ padding: "6px 8px", textAlign: "right" }}>Clicou WhatsApp</th>
-                        <th style={{ padding: "6px 8px", textAlign: "right" }}>Entraram no Whats</th>
-                        <th style={{ padding: "6px 8px", textAlign: "right" }}>Frio</th>
+                        <th style={{ padding: "6px 8px", textAlign: "right" }}>Entraram (Frio)</th>
+                        <th style={{ padding: "6px 8px", textAlign: "right" }}>Final → Frio</th>
                       </tr>
                     </thead>
                     <tbody>
                       {tabelaDias.map((d) => {
                         const lead = leadsPorDia.get(d.dia);
+                        const pctFrio = lead && d.concluiram > 0 ? Math.round((lead.frio / d.concluiram) * 100) : null;
                         return (
                           <tr key={d.dia} style={{ borderTop: "1px solid rgba(128,128,128,0.2)" }}>
                             <td style={{ padding: "6px 8px" }}>{d.dia}</td>
                             <td style={{ padding: "6px 8px", opacity: 0.7 }}>{d.semana}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>{d.count.toLocaleString("pt-BR")}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{d.concluiram.toLocaleString("pt-BR")}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", opacity: 0.75 }}>{d.count.toLocaleString("pt-BR")}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>{d.concluiram.toLocaleString("pt-BR")}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>{d.wa.toLocaleString("pt-BR")}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>{lead ? lead.leads.toLocaleString("pt-BR") : "—"}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{lead ? lead.frio.toLocaleString("pt-BR") : "—"}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>{lead ? lead.frio.toLocaleString("pt-BR") : "—"}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", opacity: 0.85 }}>{pctFrio == null ? "—" : `${pctFrio}%`}</td>
                           </tr>
                         );
                       })}
@@ -127,7 +128,7 @@ export default async function QuizPage({ searchParams }) {
                   </table>
                 </div>
                 <p style={{ fontSize: "0.8rem", opacity: 0.6, marginTop: "0.5rem" }}>
-                  Quiz por dia de início da sessão. “Entraram no Whats” e “Frio” vêm da mesma aba do /funil (Boas Vindas e tag Frio do dia) pra fechar a conta quiz → WhatsApp no mesmo lugar.
+                  “Chegaram ao final” = viram o resultado do quiz. “Entraram (Frio)” vem da aba do /funil: só recebe a tag quem MANDA a mensagem no Whats — a diferença entre “Clicou WhatsApp” e “Entraram (Frio)” é quem foi enviado pro Whats e não mandou a mensagem. “Final → Frio” = dos que terminaram o quiz no dia, % que virou lead de verdade.
                 </p>
               </Section>
 
