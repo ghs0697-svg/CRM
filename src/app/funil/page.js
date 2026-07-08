@@ -119,7 +119,12 @@ export default async function FunilPage({ searchParams }) {
                 </Section>
               )}
 
-              <Section title="Temperatura (% do total de leads)">
+              <Section title="Temperatura (volume de tags por período)">
+                {data.safra?.disponivel && (
+                  <p style={{ fontSize: "0.8rem", opacity: 0.6, margin: "0 0 0.6rem" }}>
+                    Isto é <strong>volume de tags no período</strong> (quantas tags foram aplicadas), não conversão. A coluna Morno aqui <strong>subconta quem pula etapa</strong> (pede preço direto): a tag Morno não é aplicada nesses casos. Pra conversão real use a “Conversão por safra” acima.
+                  </p>
+                )}
                 <Bar label="Frio" count={t.frio} pct={t.boasVindas ? Math.round((t.frio / t.boasVindas) * 1000) / 10 : 0} max={100} />
                 <Bar label="Morno" count={t.morno} pct={t.pctMorno} max={100} />
                 <Bar label="Quente" count={t.quente} pct={t.pctQuente} max={100} />
