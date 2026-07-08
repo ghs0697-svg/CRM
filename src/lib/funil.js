@@ -110,5 +110,43 @@ export async function getFunilStats(mes) {
   }
 
   const recent = mesSel === "todos" ? diasUsados.slice(-30).reverse() : [...diasUsados].reverse();
-  return { totals, recent, linktree, linktreeAtualizado, meses, mesSel };
+
+  // Conversão POR SAFRA (aba FUNIL_SAFRA, escrita de hora em hora pela lane Agentes
+  // a partir do /api/funil — deduplicada por subscriber_id). É o funil REAL: "dos que
+  // entraram no dia X, % que chegou a cada degrau", diferente do volume/dia do PAINEL.
+  // Colunas: A Dia(YYYY-MM-DD) · B Entraram · C FRIO · D MORNO · E QUENTE · F LINK
+  // (+ colunas de % que ignoro e recalculo). Última linha = TOTAL. Leitura guardada.
+  let safraDias = [];
+  let safraTotal = null;
+  try {
+    const sf = await sheets.spreadsheets.values.get({ spreadsheetId: LEADS_SHEET_ID, range: "FUNIL_SAFRA!A2:F" });
+    for (const r of (sf.data.values || [])) {
+      const dia = String(r[0] || "").trim();
+      const linha = { entraram: numInt(r[1]), frio: numInt(r[2]), morno: numInt(r[3]), quente: numInt(r[4]), link: numInt(r[5]) };
+      if (dia.toUpperCase() === "TOTAL") { safraTotal = linha; continue; }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dia)) safraDias.push({ dia, ...linha });
+    }
+    safraDias.sort((a, b) => a.dia.localeCompare(b.dia));
+  } catch (e) {
+    console.error("[funil] leitura da aba FUNIL_SAFRA falhou:", (e && e.message) || e);
+  }
+
+  // Aplica o MESMO filtro de mês do painel de volume. Resumo do período = soma das
+  // safras do mês (cada lead tem 1 safra só, então somar dias não duplica); em "todos"
+  // usa a linha TOTAL da aba. pctX = X / entraram (conversão da entrada).
+  const safraNoMes = mesSel === "todos" ? safraDias : safraDias.filter((d) => d.dia.slice(0, 7) === mesSel);
+  const somaMes = safraNoMes.reduce((t, d) => ({
+    entraram: t.entraram + d.entraram, frio: t.frio + d.frio, morno: t.morno + d.morno, quente: t.quente + d.quente, link: t.link + d.link,
+  }), { entraram: 0, frio: 0, morno: 0, quente: 0, link: 0 });
+  const safraResumo = mesSel === "todos" && safraTotal ? safraTotal : somaMes;
+  const cpct = (n) => (safraResumo.entraram ? Math.round((n / safraResumo.entraram) * 1000) / 10 : 0);
+  const safra = {
+    disponivel: safraDias.length > 0,
+    resumo: { ...safraResumo, pctFrio: cpct(safraResumo.frio), pctMorno: cpct(safraResumo.morno), pctQuente: cpct(safraResumo.quente), pctLink: cpct(safraResumo.link) },
+    dias: (mesSel === "todos" ? safraNoMes.slice(-30) : safraNoMes)
+      .map((d) => ({ ...d, pctMorno: d.entraram ? Math.round((d.morno / d.entraram) * 1000) / 10 : 0, pctQuente: d.entraram ? Math.round((d.quente / d.entraram) * 1000) / 10 : 0, pctLink: d.entraram ? Math.round((d.link / d.entraram) * 1000) / 10 : 0 }))
+      .reverse(),
+  };
+
+  return { totals, recent, linktree, linktreeAtualizado, meses, mesSel, safra };
 }

@@ -85,6 +85,40 @@ export default async function FunilPage({ searchParams }) {
                 Período: <strong>{mesLabel(data.mesSel)}</strong>
               </p>
 
+              {data.safra?.disponivel && (
+                <Section title={data.mesSel === "todos" ? "Conversão por safra — de cada 100 que entram" : `Conversão por safra — quem entrou em ${mesLabel(data.mesSel)}`}>
+                  <div className={styles.cards} style={{ marginBottom: "0.5rem" }}>
+                    <Card label="Entraram" value={fmt(data.safra.resumo.entraram)} />
+                    <Card label="Viraram Morno" value={fmt(data.safra.resumo.morno)} sub={fpct(data.safra.resumo.pctMorno)} />
+                    <Card label="Viraram Quente" value={fmt(data.safra.resumo.quente)} sub={fpct(data.safra.resumo.pctQuente)} />
+                    <Card label="Pegaram o Link" value={fmt(data.safra.resumo.link)} sub={fpct(data.safra.resumo.pctLink)} />
+                  </div>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Entrou em</th><th>Entraram</th><th>→ Morno</th><th>→ Quente</th><th>→ Link</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.safra.dias.map((d) => (
+                          <tr key={d.dia}>
+                            <td>{d.dia.split("-").reverse().join("/")}</td>
+                            <td><strong>{fmt(d.entraram)}</strong></td>
+                            <td>{fmt(d.morno)} <em style={{ opacity: 0.6 }}>({fpct(d.pctMorno)})</em></td>
+                            <td>{fmt(d.quente)} <em style={{ opacity: 0.6 }}>({fpct(d.pctQuente)})</em></td>
+                            <td>{fmt(d.link)} <em style={{ opacity: 0.6 }}>({fpct(d.pctLink)})</em></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p style={{ fontSize: "0.8rem", opacity: 0.6, marginTop: "0.5rem" }}>
+                    Deduplicado por lead (1 pessoa = 1 linha, re-entradas colapsam). “Entrou em” = dia do 1º contato; as % são desse grupo que chegou a cada degrau ao longo do tempo, não no mesmo dia. Quente pode passar Morno em safras onde o lead pula etapa (pediu preço direto). Atualiza sozinho de hora em hora.
+                  </p>
+                </Section>
+              )}
+
               <Section title="Temperatura (% do total de leads)">
                 <Bar label="Frio" count={t.frio} pct={t.boasVindas ? Math.round((t.frio / t.boasVindas) * 1000) / 10 : 0} max={100} />
                 <Bar label="Morno" count={t.morno} pct={t.pctMorno} max={100} />
