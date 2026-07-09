@@ -227,6 +227,7 @@ body{padding:0;margin:0}
 
   <div class="sidebar-section">Visão</div>
   <a class="nav-link active" data-nav="overview"><span class="nav-icon">📊</span>Overview</a>
+  <a class="nav-link" data-nav="multiplo"><span class="nav-icon">🎯</span>Múltiplo 70k</a>
   <!-- Funil Comercial, Financeiro e Funil Completo (Linktree+Quiz) movidos pro CRM (nativos: /funil, /faturamento, /metricas). Painel = só insight de IG. -->
 
   <div class="sidebar-section">Sistema WebFit</div>
@@ -318,6 +319,30 @@ body{padding:0;margin:0}
         <b>O que faz com isso:</b> &gt;15s = gancho excelente. &lt;3s = a pessoa larga nos primeiros segundos (gancho fraco).
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ========== MÚLTIPLO 70k (barômetro: continua vs para) ========== -->
+<section class="view" data-view="multiplo">
+  <div class="hero-h1" style="font-size:24px;line-height:1.3">Múltiplo dos 70 mil</div>
+  <p style="color:var(--muted);font-size:12px;margin:6px 0 16px;max-width:640px">
+    Base de 70 mil views (o piso que os influenciadores usam de referência). <b>Múltiplo = views ÷ 70.000</b>: bateu 70k = 1x, 140k = 2x, 490k = 7x. Múltiplo alto = <b>continua fazendo</b>; não bateu os 70k = <b>repensa ou para</b>. Só Reels.
+  </p>
+  <div class="tabs" id="multPeriod" style="margin-bottom:14px">
+    <button class="tab" data-days="7">Últimos 7 dias</button>
+    <button class="tab active" data-days="14">Últimos 14 dias</button>
+    <button class="tab" data-days="30">Últimos 30 dias</button>
+  </div>
+  <div class="kpis" id="multKpis" style="margin-bottom:16px"></div>
+  <div class="panel" style="margin-bottom:16px">
+    <h3>🚀 Continua fazendo (bateu os 70k)</h3>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Ordenado por múltiplo. 5x ou mais = dobra a aposta, o tema entregou fora da curva.</p>
+    <div style="overflow-x:auto"><table class="table" id="multWin"></table></div>
+  </div>
+  <div class="panel">
+    <h3>❌ Parar ou repensar (não bateu os 70k)</h3>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Reels do período abaixo da base. Se um tema aparece muito aqui, é candidato a cortar.</p>
+    <div style="overflow-x:auto"><table class="table" id="multFlop"></table></div>
   </div>
 </section>
 
@@ -89276,6 +89301,60 @@ function temOverrideNF(p) {
       ${cards}
     </div>`;
   }).join('');
+})();
+
+// === MÚLTIPLO 70k (barômetro: continua vs para) ===
+(function multiplo70k(){
+  const BASE = 70000;
+  const reels = RAW_DATA.filter(p => /reel/i.test(p.tipo || '') && typeof p.views === 'number');
+  const datas = reels.map(r => r.data).filter(Boolean).sort();
+  if (!datas.length) return;
+  const maxD = datas[datas.length - 1];
+  const fmt = n => Number(n || 0).toLocaleString('pt-BR');
+  const multFmt = m => m.toFixed(1).replace('.', ',') + 'x';
+  const esc = s => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  function tier(m){
+    if (m >= 5) return ['dobra a aposta', '#2e7d32', 'rgba(46,125,50,.18)'];
+    if (m >= 3) return ['forte', '#2e7d32', 'rgba(46,125,50,.10)'];
+    if (m >= 2) return ['funciona', '#1565c0', 'rgba(21,101,192,.12)'];
+    return ['no limite', '#b8901f', 'rgba(184,144,31,.16)'];
+  }
+  function render(dias){
+    const c = new Date(maxD + 'T00:00:00'); c.setDate(c.getDate() - dias);
+    const cut = c.toISOString().slice(0, 10);
+    const win = reels.filter(r => r.data && r.data >= cut).map(r => ({ r: r, mult: r.views / BASE }));
+    const bateu = win.filter(x => x.mult >= 1).sort((a, b) => b.mult - a.mult);
+    const flop = win.filter(x => x.mult < 1).sort((a, b) => b.r.views - a.r.views);
+    const best = bateu[0];
+    const pct = win.length ? Math.round(bateu.length / win.length * 100) : 0;
+    const media = win.length ? win.reduce((s, x) => s + x.mult, 0) / win.length : 0;
+    const kpis = [
+      ['Reels no período', fmt(win.length)],
+      ['Bateram 70k', fmt(bateu.length) + ' (' + pct + '%)'],
+      ['Melhor múltiplo', best ? multFmt(best.mult) : '—'],
+      ['Múltiplo médio', multFmt(media)]
+    ];
+    document.getElementById('multKpis').innerHTML = kpis.map(k => '<div class="kpi"><div class="kpi-lbl">' + k[0] + '</div><div class="kpi-val">' + k[1] + '</div></div>').join('');
+    const rowsW = bateu.map(x => {
+      const t = tier(x.mult);
+      const hook = esc((x.r.hook_texto || x.r.descricao || '').slice(0, 70));
+      return '<tr><td style="white-space:nowrap"><b style="color:' + t[1] + '">' + multFmt(x.mult) + '</b> <span style="font-size:10px;background:' + t[2] + ';color:' + t[1] + ';padding:2px 7px;border-radius:999px;margin-left:4px">' + t[0] + '</span></td><td style="white-space:nowrap">' + fmt(x.r.views) + '</td><td style="white-space:nowrap;color:var(--muted)">' + (x.r.data || '') + '</td><td>' + hook + '</td><td><a href="' + (x.r.link || '#') + '" target="_blank" style="color:var(--accent)">ver</a></td></tr>';
+    }).join('') || '<tr><td colspan="5" style="color:var(--dim);text-align:center;padding:12px">nenhum reel bateu 70k nesse período</td></tr>';
+    document.getElementById('multWin').innerHTML = '<thead><tr><th>Múltiplo</th><th>Views</th><th>Data</th><th>Gancho</th><th></th></tr></thead><tbody>' + rowsW + '</tbody>';
+    const rowsF = flop.map(x => {
+      const hook = esc((x.r.hook_texto || x.r.descricao || '').slice(0, 80));
+      return '<tr><td style="white-space:nowrap;color:var(--red)">' + fmt(x.r.views) + '</td><td style="white-space:nowrap;color:var(--muted)">' + (x.r.data || '') + '</td><td>' + hook + '</td><td><a href="' + (x.r.link || '#') + '" target="_blank" style="color:var(--accent)">ver</a></td></tr>';
+    }).join('') || '<tr><td colspan="4" style="color:var(--dim);text-align:center;padding:12px">todos bateram 70k nesse período</td></tr>';
+    document.getElementById('multFlop').innerHTML = '<thead><tr><th>Views</th><th>Data</th><th>Gancho</th><th></th></tr></thead><tbody>' + rowsF + '</tbody>';
+  }
+  document.querySelectorAll('#multPeriod .tab').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#multPeriod .tab').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      render(parseInt(b.dataset.days));
+    });
+  });
+  render(14);
 })();
 
 // === PALAVRAS ===
