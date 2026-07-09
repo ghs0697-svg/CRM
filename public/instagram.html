@@ -227,7 +227,7 @@ body{padding:0;margin:0}
 
   <div class="sidebar-section">Visão</div>
   <a class="nav-link active" data-nav="overview"><span class="nav-icon">📊</span>Overview</a>
-  <a class="nav-link" data-nav="multiplo"><span class="nav-icon">🎯</span>Múltiplo 70k</a>
+  <a class="nav-link" data-nav="multiplo"><span class="nav-icon">🎯</span>Múltiplo da média</a>
   <!-- Funil Comercial, Financeiro e Funil Completo (Linktree+Quiz) movidos pro CRM (nativos: /funil, /faturamento, /metricas). Painel = só insight de IG. -->
 
   <div class="sidebar-section">Sistema WebFit</div>
@@ -324,10 +324,23 @@ body{padding:0;margin:0}
 
 <!-- ========== MÚLTIPLO 70k (barômetro: continua vs para) ========== -->
 <section class="view" data-view="multiplo">
-  <div class="hero-h1" style="font-size:24px;line-height:1.3">Múltiplo dos 70 mil</div>
-  <p style="color:var(--muted);font-size:12px;margin:6px 0 16px;max-width:640px">
-    Base de 70 mil views (o piso que os influenciadores usam de referência). <b>Múltiplo = views ÷ 70.000</b>: bateu 70k = 1x, 140k = 2x, 490k = 7x. Múltiplo alto = <b>continua fazendo</b>; não bateu os 70k = <b>repensa ou para</b>. Só Reels.
+  <div class="hero-h1" style="font-size:24px;line-height:1.3">Múltiplo da média</div>
+  <p style="color:var(--muted);font-size:12px;margin:6px 0 14px;max-width:660px">
+    A <b>base é a média de views dos teus Reels nos últimos 30 dias</b> e recalcula sozinha todo dia. <b>Múltiplo = views do reel ÷ essa média.</b> Meta: fazer cada vídeo ficar ACIMA da média e a própria média SUBIR ao longo das semanas. Média caindo = ruim; subindo = bom. Só Reels.
   </p>
+  <div class="panel" style="margin-bottom:16px">
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div class="kpi-lbl">Média de views (últimos 30d) = a base</div>
+        <div style="font-size:32px;font-weight:700;color:var(--accent);line-height:1.1" id="mediaBase">—</div>
+        <div id="mediaTrend" style="font-size:12px;margin-top:2px"></div>
+      </div>
+      <div style="flex:1;min-width:240px">
+        <div class="kpi-lbl" style="margin-bottom:6px">Tendência da média (rolando 30d, 8 semanas)</div>
+        <div id="mediaSpark"></div>
+      </div>
+    </div>
+  </div>
   <div class="tabs" id="multPeriod" style="margin-bottom:14px">
     <button class="tab" data-days="7">Últimos 7 dias</button>
     <button class="tab active" data-days="14">Últimos 14 dias</button>
@@ -335,13 +348,13 @@ body{padding:0;margin:0}
   </div>
   <div class="kpis" id="multKpis" style="margin-bottom:16px"></div>
   <div class="panel" style="margin-bottom:16px">
-    <h3>🚀 Continua fazendo (bateu os 70k)</h3>
-    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Ordenado por múltiplo. 5x ou mais = dobra a aposta, o tema entregou fora da curva.</p>
+    <h3>🚀 Continua fazendo (acima da média)</h3>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Ordenado por múltiplo. 5x ou mais da média = dobra a aposta, entregou fora da curva.</p>
     <div style="overflow-x:auto"><table class="table" id="multWin"></table></div>
   </div>
   <div class="panel">
-    <h3>❌ Parar ou repensar (não bateu os 70k)</h3>
-    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Reels do período abaixo da base. Se um tema aparece muito aqui, é candidato a cortar.</p>
+    <h3>❌ Parar ou repensar (abaixo da média)</h3>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Reels do período abaixo da média. Tema que aparece muito aqui = candidato a cortar (puxa a média pra baixo).</p>
     <div style="overflow-x:auto"><table class="table" id="multFlop"></table></div>
   </div>
 </section>
@@ -89303,22 +89316,46 @@ function temOverrideNF(p) {
   }).join('');
 })();
 
-// === MÚLTIPLO 70k (barômetro: continua vs para) ===
-(function multiplo70k(){
-  const BASE = 70000;
-  const reels = RAW_DATA.filter(p => /reel/i.test(p.tipo || '') && typeof p.views === 'number');
+// === MÚLTIPLO DA MÉDIA (base dinâmica = média 30d + tendência) ===
+(function multiploMedia(){
+  const reels = RAW_DATA.filter(p => /reel/i.test(p.tipo || '') && typeof p.views === 'number' && p.views > 0);
   const datas = reels.map(r => r.data).filter(Boolean).sort();
   if (!datas.length) return;
   const maxD = datas[datas.length - 1];
-  const fmt = n => Number(n || 0).toLocaleString('pt-BR');
+  const fmt = n => Number(Math.round(n) || 0).toLocaleString('pt-BR');
+  const kfmt = n => n >= 1000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1).replace('.', ',') + 'k' : String(Math.round(n));
   const multFmt = m => m.toFixed(1).replace('.', ',') + 'x';
   const esc = s => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // média (mean) de views dos reels na janela de 'dias' terminando em 'ate' (YYYY-MM-DD)
+  function mediaJanela(ate, dias){
+    const f = new Date(ate + 'T00:00:00'); const i = new Date(f); i.setDate(i.getDate() - dias);
+    const iS = i.toISOString().slice(0, 10), fS = f.toISOString().slice(0, 10);
+    const v = reels.filter(r => r.data > iS && r.data <= fS).map(r => r.views);
+    return v.length ? v.reduce((s, x) => s + x, 0) / v.length : 0;
+  }
+  const BASE = mediaJanela(maxD, 30) || 1;   // base dinâmica = média de views dos últimos 30 dias
   function tier(m){
     if (m >= 5) return ['dobra a aposta', '#2e7d32', 'rgba(46,125,50,.18)'];
     if (m >= 3) return ['forte', '#2e7d32', 'rgba(46,125,50,.10)'];
     if (m >= 2) return ['funciona', '#1565c0', 'rgba(21,101,192,.12)'];
     return ['no limite', '#b8901f', 'rgba(184,144,31,.16)'];
   }
+  // Header: média base + tendência (rolando 30d, amostrada semana a semana)
+  const semanas = [];
+  for (let w = 7; w >= 0; w--){ const f = new Date(maxD + 'T00:00:00'); f.setDate(f.getDate() - w * 7); const aS = f.toISOString().slice(0, 10); semanas.push({ ate: aS, media: mediaJanela(aS, 30) }); }
+  const atual = semanas[semanas.length - 1].media;
+  const anterior = semanas.length > 1 ? semanas[semanas.length - 2].media : atual;
+  const deltaPct = anterior ? Math.round((atual - anterior) / anterior * 100) : 0;
+  const up = deltaPct >= 0;
+  document.getElementById('mediaBase').textContent = fmt(BASE) + ' views';
+  document.getElementById('mediaTrend').innerHTML = '<span style="color:' + (up ? '#2e7d32' : '#b91c1c') + ';font-weight:700">' + (up ? '▲' : '▼') + ' ' + Math.abs(deltaPct) + '% vs semana passada</span> <span style="color:var(--muted)">(' + (up ? 'subindo, bom' : 'caindo, ruim') + ')</span>';
+  const maxM = Math.max.apply(null, semanas.map(s => s.media)) || 1;
+  document.getElementById('mediaSpark').innerHTML = '<div style="display:flex;align-items:flex-end;gap:5px;height:56px">' + semanas.map((s, idx) => {
+    const h = Math.max(4, Math.round(s.media / maxM * 46));
+    const cor = idx === semanas.length - 1 ? 'var(--accent)' : 'var(--dim)';
+    return '<div title="' + s.ate + ': ' + fmt(s.media) + ' views" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end"><div style="width:100%;height:' + h + 'px;background:' + cor + ';border-radius:3px 3px 0 0"></div><div style="font-size:9px;color:var(--muted);margin-top:3px">' + kfmt(s.media) + '</div></div>';
+  }).join('') + '</div><div style="font-size:9px;color:var(--dim);text-align:right;margin-top:2px">← 8 semanas atrás · hoje →</div>';
+
   function render(dias){
     const c = new Date(maxD + 'T00:00:00'); c.setDate(c.getDate() - dias);
     const cut = c.toISOString().slice(0, 10);
@@ -89327,24 +89364,23 @@ function temOverrideNF(p) {
     const flop = win.filter(x => x.mult < 1).sort((a, b) => b.r.views - a.r.views);
     const best = bateu[0];
     const pct = win.length ? Math.round(bateu.length / win.length * 100) : 0;
-    const media = win.length ? win.reduce((s, x) => s + x.mult, 0) / win.length : 0;
     const kpis = [
       ['Reels no período', fmt(win.length)],
-      ['Bateram 70k', fmt(bateu.length) + ' (' + pct + '%)'],
+      ['Acima da média', fmt(bateu.length) + ' (' + pct + '%)'],
       ['Melhor múltiplo', best ? multFmt(best.mult) : '—'],
-      ['Múltiplo médio', multFmt(media)]
+      ['Base (média 30d)', fmt(BASE)]
     ];
     document.getElementById('multKpis').innerHTML = kpis.map(k => '<div class="kpi"><div class="kpi-lbl">' + k[0] + '</div><div class="kpi-val">' + k[1] + '</div></div>').join('');
     const rowsW = bateu.map(x => {
       const t = tier(x.mult);
       const hook = esc((x.r.hook_texto || x.r.descricao || '').slice(0, 70));
       return '<tr><td style="white-space:nowrap"><b style="color:' + t[1] + '">' + multFmt(x.mult) + '</b> <span style="font-size:10px;background:' + t[2] + ';color:' + t[1] + ';padding:2px 7px;border-radius:999px;margin-left:4px">' + t[0] + '</span></td><td style="white-space:nowrap">' + fmt(x.r.views) + '</td><td style="white-space:nowrap;color:var(--muted)">' + (x.r.data || '') + '</td><td>' + hook + '</td><td><a href="' + (x.r.link || '#') + '" target="_blank" style="color:var(--accent)">ver</a></td></tr>';
-    }).join('') || '<tr><td colspan="5" style="color:var(--dim);text-align:center;padding:12px">nenhum reel bateu 70k nesse período</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="color:var(--dim);text-align:center;padding:12px">nenhum reel acima da média nesse período</td></tr>';
     document.getElementById('multWin').innerHTML = '<thead><tr><th>Múltiplo</th><th>Views</th><th>Data</th><th>Gancho</th><th></th></tr></thead><tbody>' + rowsW + '</tbody>';
     const rowsF = flop.map(x => {
       const hook = esc((x.r.hook_texto || x.r.descricao || '').slice(0, 80));
       return '<tr><td style="white-space:nowrap;color:var(--red)">' + fmt(x.r.views) + '</td><td style="white-space:nowrap;color:var(--muted)">' + (x.r.data || '') + '</td><td>' + hook + '</td><td><a href="' + (x.r.link || '#') + '" target="_blank" style="color:var(--accent)">ver</a></td></tr>';
-    }).join('') || '<tr><td colspan="4" style="color:var(--dim);text-align:center;padding:12px">todos bateram 70k nesse período</td></tr>';
+    }).join('') || '<tr><td colspan="4" style="color:var(--dim);text-align:center;padding:12px">todos acima da média nesse período</td></tr>';
     document.getElementById('multFlop').innerHTML = '<thead><tr><th>Views</th><th>Data</th><th>Gancho</th><th></th></tr></thead><tbody>' + rowsF + '</tbody>';
   }
   document.querySelectorAll('#multPeriod .tab').forEach(b => {
