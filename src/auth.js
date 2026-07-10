@@ -7,6 +7,7 @@ const ALLOWLIST = new Set([
   "vitormoto535@gmail.com",
   "brunaferreiravega@gmail.com",
   "scheuermann.gh@gmail.com",
+  "cairomateusz@gmail.com",
 ]);
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
