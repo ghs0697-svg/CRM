@@ -119,24 +119,52 @@ export async function getFunilStats(mes) {
 
   const recent = mesSel === "todos" ? diasUsados.slice(-30).reverse() : [...diasUsados].reverse();
 
-  // Conversão POR SAFRA (aba FUNIL_SAFRA, escrita de hora em hora pela lane Agentes
-  // a partir do /api/funil — deduplicada por subscriber_id). É o funil REAL: "dos que
-  // entraram no dia X, % que chegou a cada degrau", diferente do volume/dia do PAINEL.
-  // Colunas: A Dia(YYYY-MM-DD) · B Entraram · C FRIO · D MORNO · E QUENTE · F LINK
-  // (+ colunas de % que ignoro e recalculo). Última linha = TOTAL. Leitura guardada.
+  // Conversão POR SAFRA (dedup por subscriber_id; dados escritos de hora em hora
+  // pela lane Agentes). É o funil REAL: "dos que entraram no dia X, % que chegou a
+  // cada degrau", diferente do volume/dia do PAINEL.
+  //
+  // PRESUNÇÃO DE ESCADA (decisão GH 2026-07-09): degrau = "chegou PELO MENOS até
+  // aqui". Quem pulou os entregáveis e virou quente conta em morno também; quem
+  // pegou o link conta em quente e morno. Por isso agrego EU a partir da
+  // FUNIL_LEADS (1 linha por lead: E Safra · H FRIO · I MORNO · J QUENTE · K LINK,
+  // "sim"/vazio) em vez de usar os totais crus da FUNIL_SAFRA. FRIO fica literal
+  // (= recebeu boas-vindas). Fallback: se a FUNIL_LEADS falhar, degrada pros
+  // números crus da FUNIL_SAFRA (sem escada), que é melhor que sumir a seção.
   let safraDias = [];
   let safraTotal = null;
   try {
-    const sf = await sheets.spreadsheets.values.get({ spreadsheetId: LEADS_SHEET_ID, range: "FUNIL_SAFRA!A2:F" });
-    for (const r of (sf.data.values || [])) {
-      const dia = String(r[0] || "").trim();
-      const linha = { entraram: numInt(r[1]), frio: numInt(r[2]), morno: numInt(r[3]), quente: numInt(r[4]), link: numInt(r[5]) };
-      if (dia.toUpperCase() === "TOTAL") { safraTotal = linha; continue; }
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dia)) safraDias.push({ dia, ...linha });
+    const fl = await sheets.spreadsheets.values.get({ spreadsheetId: LEADS_SHEET_ID, range: "FUNIL_LEADS!E2:K" });
+    const porDiaSafra = new Map();
+    for (const r of (fl.data.values || [])) {
+      const dia = String(r[0] || "").trim(); // col E: Safra (dia do 1º contato)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) continue;
+      const sim = (i) => String(r[i] || "").trim().toLowerCase() === "sim";
+      const link = sim(6);                 // K
+      const quente = sim(5) || link;       // J — escada: link implica quente
+      const morno = sim(4) || quente;      // I — escada: quente implica morno
+      const frio = sim(3);                 // H — literal (boas-vindas)
+      const c = porDiaSafra.get(dia) || { dia, entraram: 0, frio: 0, morno: 0, quente: 0, link: 0 };
+      c.entraram += 1;
+      if (frio) c.frio += 1; if (morno) c.morno += 1; if (quente) c.quente += 1; if (link) c.link += 1;
+      porDiaSafra.set(dia, c);
     }
-    safraDias.sort((a, b) => a.dia.localeCompare(b.dia));
+    safraDias = [...porDiaSafra.values()].sort((a, b) => a.dia.localeCompare(b.dia));
   } catch (e) {
-    console.error("[funil] leitura da aba FUNIL_SAFRA falhou:", (e && e.message) || e);
+    console.error("[funil] FUNIL_LEADS indisponível (escada), degradando pra FUNIL_SAFRA crua:", (e && e.message) || e);
+  }
+  if (!safraDias.length) {
+    try {
+      const sf = await sheets.spreadsheets.values.get({ spreadsheetId: LEADS_SHEET_ID, range: "FUNIL_SAFRA!A2:F" });
+      for (const r of (sf.data.values || [])) {
+        const dia = String(r[0] || "").trim();
+        const linha = { entraram: numInt(r[1]), frio: numInt(r[2]), morno: numInt(r[3]), quente: numInt(r[4]), link: numInt(r[5]) };
+        if (dia.toUpperCase() === "TOTAL") { safraTotal = linha; continue; }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dia)) safraDias.push({ dia, ...linha });
+      }
+      safraDias.sort((a, b) => a.dia.localeCompare(b.dia));
+    } catch (e) {
+      console.error("[funil] leitura da aba FUNIL_SAFRA falhou:", (e && e.message) || e);
+    }
   }
 
   // Aplica o MESMO filtro de mês do painel de volume. Resumo do período = soma das

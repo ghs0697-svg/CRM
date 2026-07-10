@@ -114,7 +114,7 @@ export default async function FunilPage({ searchParams }) {
                     </table>
                   </div>
                   <p style={{ fontSize: "0.8rem", opacity: 0.6, marginTop: "0.5rem" }}>
-                    Deduplicado por lead (1 pessoa = 1 linha, re-entradas colapsam). Agrupado por {data.safra.granularidade === "semana" ? "semana de entrada (escolha um mês pra ver dia a dia)" : "dia de entrada"}; as % são desse grupo que chegou a cada degrau ao longo do tempo, não no mesmo dia. Quente pode passar Morno quando o lead pula etapa (pediu preço direto). Atualiza sozinho de hora em hora.
+                    Deduplicado por lead (1 pessoa = 1 linha, re-entradas colapsam). Agrupado por {data.safra.granularidade === "semana" ? "semana de entrada (escolha um mês pra ver dia a dia)" : "dia de entrada"}; as % são desse grupo que chegou a cada degrau ao longo do tempo, não no mesmo dia. Degraus cumulativos: chegar num degrau conta os anteriores (quem pediu preço direto conta em Morno também). Atualiza sozinho de hora em hora.
                   </p>
                 </Section>
               )}
