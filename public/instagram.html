@@ -325,8 +325,8 @@ body{padding:0;margin:0}
 <!-- ========== MÚLTIPLO 70k (barômetro: continua vs para) ========== -->
 <section class="view" data-view="multiplo">
   <div class="hero-h1" style="font-size:24px;line-height:1.3">Múltiplo da média</div>
-  <p style="color:var(--muted);font-size:12px;margin:6px 0 14px;max-width:680px">
-    A <b>base é a views típica dos teus Reels dos últimos 30 dias</b> (mediana ou média, tu escolhe) e recalcula sozinha todo dia. <b>Múltiplo = views do reel ÷ essa base.</b> Meta: cada vídeo ACIMA da base e a base SUBINDO ao longo das semanas. Caindo = ruim; subindo = bom. Só Reels. (A <b>mediana</b> ignora outliers e é o que a empresa pediu; 5x a mediana ≈ 70k.)
+  <p style="color:var(--muted);font-size:12px;margin:6px 0 14px;max-width:700px">
+    <b>Semana de metrificação: segunda → sexta meia-noite.</b> Sábado/domingo entram na semana seguinte (post não dá pra julgar no dia seguinte). A <b>base é a views típica dos teus Reels dos 30 dias até a última sexta fechada</b> (mediana ou média, tu escolhe) e recalcula sozinha. Reel postado depois da última sexta aparece com <b>🕐 maturando</b>: fica FORA da base e é cedo pra julgar. <b>Múltiplo = views ÷ base.</b> Meta: cada vídeo ACIMA da base e a base SUBINDO semana a semana. Só Reels. (A <b>mediana</b> ignora outliers e é o que a empresa pediu.)
   </p>
   <div class="panel" style="margin-bottom:16px">
     <div class="tabs" id="baseMode" style="margin-bottom:12px">
@@ -341,7 +341,7 @@ body{padding:0;margin:0}
         <div id="mediaTrend" style="font-size:12px;margin-top:2px"></div>
       </div>
       <div style="flex:1;min-width:240px">
-        <div class="kpi-lbl" style="margin-bottom:6px">Tendência da base (rolando 30d, 8 semanas)</div>
+        <div class="kpi-lbl" style="margin-bottom:6px">Semana a semana (fechadas, seg→sex meia-noite)</div>
         <div id="mediaSpark"></div>
       </div>
     </div>
@@ -353,7 +353,7 @@ body{padding:0;margin:0}
     <button class="tab" data-days="60">Últimos 60 dias</button>
     <button class="tab" data-days="90">Últimos 90 dias</button>
   </div>
-  <p style="font-size:10px;color:var(--dim);margin:-8px 0 14px">O período muda só QUAIS reels aparecem. A base (o sarrafo) é sempre a média de 30 dias, pra não distorcer com reel viral antigo.</p>
+  <p style="font-size:10px;color:var(--dim);margin:-8px 0 14px">O período muda só QUAIS reels aparecem. A base (o sarrafo) é sempre a dos 30 dias até a última sexta fechada, pra não distorcer com viral antigo nem com reel ainda maturando.</p>
   <div class="kpis" id="multKpis" style="margin-bottom:16px"></div>
   <div class="panel" style="margin-bottom:16px">
     <h3>🚀 Continua fazendo (acima da média)</h3>
@@ -362,7 +362,7 @@ body{padding:0;margin:0}
   </div>
   <div class="panel">
     <h3>❌ Parar ou repensar (abaixo da média)</h3>
-    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Reels do período abaixo da média. Tema que aparece muito aqui = candidato a cortar (puxa a média pra baixo).</p>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Reels do período abaixo da base. Tema que aparece muito aqui = candidato a cortar (puxa a base pra baixo). <b>🕐 maturando</b> = postado depois da última sexta fechada: NÃO é veredito ainda, espera a semana fechar.</p>
     <div style="overflow-x:auto"><table class="table" id="multFlop"></table></div>
   </div>
 </section>
@@ -89830,6 +89830,21 @@ function temOverrideNF(p) {
     if (tipo === 'mediana') { const s = v.slice().sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
     return v.reduce((s, x) => s + x, 0) / v.length;
   }
+  // Semana de metrificação (regra do GH): segunda 00:00 → sexta MEIA-NOITE.
+  // Sábado/domingo pertencem à semana SEGUINTE (post de fds não dá pra julgar no dia seguinte).
+  // Reel postado DEPOIS da última sexta fechada = "maturando": fora da base, cedo pra julgar.
+  const isoLocal = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  function mondayOf(dateStr){
+    const d = new Date(dateStr + 'T00:00:00');
+    const dow = d.getDay(); // 0 dom · 6 sáb
+    d.setDate(d.getDate() + (dow === 0 ? 1 : (dow === 6 ? 2 : 1 - dow)));
+    return d;
+  }
+  const cohortMon = mondayOf(isoLocal(new Date()));            // segunda da semana de metrificação corrente
+  const lastFri = new Date(cohortMon); lastFri.setDate(lastFri.getDate() - 3);
+  const lastFriS = isoLocal(lastFri);                          // última sexta FECHADA (fim da última semana medível)
+  const friBR = lastFriS.slice(8, 10) + '/' + lastFriS.slice(5, 7);
+  const isMaturando = dd => dd > lastFriS;
   let baseMode = 'mediana';   // padrão (pedido da empresa); toggle Média/Mediana no header
   let diasAtivo = 14;
   let BASE = 1;
@@ -89840,27 +89855,39 @@ function temOverrideNF(p) {
     return ['no limite', '#b8901f', 'rgba(184,144,31,.16)'];
   }
   function renderHeader(){
-    const media30 = statJanela(maxD, 30, 'media');
-    const mediana30 = statJanela(maxD, 30, 'mediana');
+    // base = stat dos 30 dias FECHADOS (janela termina na última sexta meia-noite, nunca inclui reel maturando)
+    const media30 = statJanela(lastFriS, 30, 'media');
+    const mediana30 = statJanela(lastFriS, 30, 'mediana');
     BASE = (baseMode === 'mediana' ? mediana30 : media30) || 1;
     const lbl = baseMode === 'mediana' ? 'Mediana' : 'Média';
     const outro = baseMode === 'mediana' ? ('média: ' + fmt(media30) + ' views') : ('mediana: ' + fmt(mediana30) + ' views');
+    // barras = semanas FECHADAS (seg→sex): stat de views dos reels POSTADOS em cada semana (sáb/dom contam na seguinte)
     const semanas = [];
-    for (let w = 7; w >= 0; w--){ const f = new Date(maxD + 'T00:00:00'); f.setDate(f.getDate() - w * 7); const aS = f.toISOString().slice(0, 10); semanas.push({ ate: aS, val: statJanela(aS, 30, baseMode) }); }
+    for (let w = 8; w >= 1; w--){
+      const mon = new Date(cohortMon); mon.setDate(mon.getDate() - 7 * w);
+      const monS = isoLocal(mon);
+      const v = reels.filter(r => isoLocal(mondayOf(r.data)) === monS).map(r => r.views);
+      let val = 0;
+      if (v.length){
+        if (baseMode === 'mediana'){ const s = v.slice().sort((a, b) => a - b); const m = Math.floor(s.length / 2); val = s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+        else val = v.reduce((s, x) => s + x, 0) / v.length;
+      }
+      semanas.push({ label: monS.slice(8, 10) + '/' + monS.slice(5, 7), val: val, n: v.length });
+    }
     const atual = semanas[semanas.length - 1].val;
     const anterior = semanas.length > 1 ? semanas[semanas.length - 2].val : atual;
     const deltaPct = anterior ? Math.round((atual - anterior) / anterior * 100) : 0;
     const up = deltaPct >= 0;
-    document.getElementById('mediaBaseLbl').textContent = lbl + ' de views (últimos 30d) = a base';
+    document.getElementById('mediaBaseLbl').textContent = lbl + ' de views (30d até sexta ' + friBR + ') = a base';
     document.getElementById('mediaBase').textContent = fmt(BASE) + ' views';
     document.getElementById('mediaOutro').textContent = '(' + outro + ')';
-    document.getElementById('mediaTrend').innerHTML = '<span style="color:' + (up ? '#2e7d32' : '#b91c1c') + ';font-weight:700">' + (up ? '▲' : '▼') + ' ' + Math.abs(deltaPct) + '% vs semana passada</span> <span style="color:var(--muted)">(' + (up ? 'subindo, bom' : 'caindo, ruim') + ')</span>';
+    document.getElementById('mediaTrend').innerHTML = '<span style="color:' + (up ? '#2e7d32' : '#b91c1c') + ';font-weight:700">' + (up ? '▲' : '▼') + ' ' + Math.abs(deltaPct) + '% última semana fechada vs anterior</span> <span style="color:var(--muted)">(' + (up ? 'subindo, bom' : 'caindo, ruim') + ')</span>';
     const maxM = Math.max.apply(null, semanas.map(s => s.val)) || 1;
     document.getElementById('mediaSpark').innerHTML = '<div style="display:flex;align-items:flex-end;gap:5px;height:56px">' + semanas.map((s, idx) => {
       const h = Math.max(4, Math.round(s.val / maxM * 46));
       const cor = idx === semanas.length - 1 ? 'var(--accent)' : 'var(--dim)';
-      return '<div title="' + s.ate + ': ' + fmt(s.val) + ' views" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end"><div style="width:100%;height:' + h + 'px;background:' + cor + ';border-radius:3px 3px 0 0"></div><div style="font-size:9px;color:var(--muted);margin-top:3px">' + kfmt(s.val) + '</div></div>';
-    }).join('') + '</div><div style="font-size:9px;color:var(--dim);text-align:right;margin-top:2px">← 8 semanas atrás · hoje →</div>';
+      return '<div title="semana de ' + s.label + ' (seg a sex): ' + fmt(s.val) + ' views · ' + s.n + ' reels" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end"><div style="width:100%;height:' + h + 'px;background:' + cor + ';border-radius:3px 3px 0 0"></div><div style="font-size:9px;color:var(--muted);margin-top:3px">' + kfmt(s.val) + '</div></div>';
+    }).join('') + '</div><div style="font-size:9px;color:var(--dim);text-align:right;margin-top:2px">← 8 semanas fechadas (seg→sex meia-noite) · mais recente →</div>';
   }
 
   function render(dias){
@@ -89871,11 +89898,13 @@ function temOverrideNF(p) {
     const flop = win.filter(x => x.mult < 1).sort((a, b) => b.r.views - a.r.views);
     const best = bateu[0];
     const pct = win.length ? Math.round(bateu.length / win.length * 100) : 0;
+    const nMat = win.filter(x => isMaturando(x.r.data)).length;
     const kpis = [
       ['Reels no período', fmt(win.length)],
       ['Acima da base', fmt(bateu.length) + ' (' + pct + '%)'],
       ['Melhor múltiplo', best ? multFmt(best.mult) : '—'],
-      ['Base (' + (baseMode === 'mediana' ? 'mediana' : 'média') + ' 30d)', fmt(BASE)]
+      ['Base (' + (baseMode === 'mediana' ? 'mediana' : 'média') + ' 30d fechada)', fmt(BASE)],
+      ['🕐 Maturando (pós ' + friBR + ')', fmt(nMat)]
     ];
     document.getElementById('multKpis').innerHTML = kpis.map(k => '<div class="kpi"><div class="kpi-lbl">' + k[0] + '</div><div class="kpi-val">' + k[1] + '</div></div>').join('');
     const naosegDe = id => (NAOSEG && NAOSEG.reels && NAOSEG.reels[id]) ? NAOSEG.reels[id].nao_seguidores_pct : null;
@@ -89887,14 +89916,18 @@ function temOverrideNF(p) {
       const nsCell = ns == null ? '<td style="color:var(--dim);text-align:right">—</td>' : '<td style="white-space:nowrap;text-align:right;font-weight:700;color:' + (ns >= 55 ? '#2e7d32' : 'var(--muted)') + '">' + String(ns).replace('.', ',') + '%' + (ns >= 55 ? ' 🏆' : '') + '</td>';
       const sg = segGerDe(x.r.id);
       const sgCell = sg == null ? '<td style="color:var(--dim);text-align:right">—</td>' : '<td style="white-space:nowrap;text-align:right;font-weight:700;color:var(--accent)">+' + fmt(sg) + '</td>';
-      return '<tr' + (ns != null && ns >= 55 ? ' style="background:rgba(46,125,50,.08)"' : '') + '><td style="white-space:nowrap"><b style="color:' + t[1] + '">' + multFmt(x.mult) + '</b> <span style="font-size:10px;background:' + t[2] + ';color:' + t[1] + ';padding:2px 7px;border-radius:999px;margin-left:4px">' + t[0] + '</span></td><td style="white-space:nowrap">' + fmt(x.r.views) + '</td>' + nsCell + sgCell + '<td style="white-space:nowrap;color:var(--muted)">' + (x.r.data || '') + '</td><td>' + hook + '</td><td><a href="' + (x.r.link || '#') + '" target="_blank" style="color:var(--accent)">ver</a></td></tr>';
-    }).join('') || '<tr><td colspan="7" style="color:var(--dim);text-align:center;padding:12px">nenhum reel acima da média nesse período</td></tr>';
-    document.getElementById('multWin').innerHTML = '<thead><tr><th>Múltiplo</th><th>Views</th><th style="text-align:right">% não-seg</th><th style="text-align:right">Seg. gerados</th><th>Data</th><th>Gancho</th><th></th></tr></thead><tbody>' + rowsW + '</tbody>';
+      const comCell = '<td style="white-space:nowrap;text-align:right">' + fmt(x.r.comentarios) + '</td>';
+      const mat = isMaturando(x.r.data);
+      const dataCell = '<td style="white-space:nowrap;color:var(--muted)" title="' + (mat ? 'postado depois da última sexta fechada: ainda maturando, fora da base' : '') + '">' + (mat ? '🕐 ' : '') + (x.r.data || '') + '</td>';
+      return '<tr' + (ns != null && ns >= 55 ? ' style="background:rgba(46,125,50,.08)"' : '') + '><td style="white-space:nowrap"><b style="color:' + t[1] + '">' + multFmt(x.mult) + '</b> <span style="font-size:10px;background:' + t[2] + ';color:' + t[1] + ';padding:2px 7px;border-radius:999px;margin-left:4px">' + t[0] + '</span></td><td style="white-space:nowrap">' + fmt(x.r.views) + '</td>' + nsCell + sgCell + comCell + dataCell + '<td>' + hook + '</td><td><a href="' + (x.r.link || '#') + '" target="_blank" style="color:var(--accent)">ver</a></td></tr>';
+    }).join('') || '<tr><td colspan="8" style="color:var(--dim);text-align:center;padding:12px">nenhum reel acima da média nesse período</td></tr>';
+    document.getElementById('multWin').innerHTML = '<thead><tr><th>Múltiplo</th><th>Views</th><th style="text-align:right">% não-seg</th><th style="text-align:right">Seg. gerados</th><th style="text-align:right">Coment.</th><th>Data</th><th>Gancho</th><th></th></tr></thead><tbody>' + rowsW + '</tbody>';
     const rowsF = flop.map(x => {
       const hook = esc((x.r.hook_texto || x.r.descricao || '').slice(0, 80));
-      return '<tr><td style="white-space:nowrap;color:var(--red)">' + fmt(x.r.views) + '</td><td style="white-space:nowrap;color:var(--muted)">' + (x.r.data || '') + '</td><td>' + hook + '</td><td><a href="' + (x.r.link || '#') + '" target="_blank" style="color:var(--accent)">ver</a></td></tr>';
-    }).join('') || '<tr><td colspan="4" style="color:var(--dim);text-align:center;padding:12px">todos acima da média nesse período</td></tr>';
-    document.getElementById('multFlop').innerHTML = '<thead><tr><th>Views</th><th>Data</th><th>Gancho</th><th></th></tr></thead><tbody>' + rowsF + '</tbody>';
+      const mat = isMaturando(x.r.data);
+      return '<tr' + (mat ? ' style="opacity:.55"' : '') + '><td style="white-space:nowrap;color:var(--red)">' + fmt(x.r.views) + '</td><td style="white-space:nowrap;text-align:right">' + fmt(x.r.comentarios) + '</td><td style="white-space:nowrap;color:var(--muted)" title="' + (mat ? 'postado depois da última sexta fechada: ainda maturando, cedo pra julgar' : '') + '">' + (mat ? '🕐 ' : '') + (x.r.data || '') + '</td><td>' + hook + (mat ? ' <span style="font-size:10px;background:rgba(184,144,31,.16);color:#b8901f;padding:2px 7px;border-radius:999px;margin-left:4px">maturando</span>' : '') + '</td><td><a href="' + (x.r.link || '#') + '" target="_blank" style="color:var(--accent)">ver</a></td></tr>';
+    }).join('') || '<tr><td colspan="5" style="color:var(--dim);text-align:center;padding:12px">todos acima da média nesse período</td></tr>';
+    document.getElementById('multFlop').innerHTML = '<thead><tr><th>Views</th><th style="text-align:right">Coment.</th><th>Data</th><th>Gancho</th><th></th></tr></thead><tbody>' + rowsF + '</tbody>';
   }
   function renderTudo(){ renderHeader(); render(diasAtivo); }
   document.querySelectorAll('#multPeriod .tab').forEach(b => {
