@@ -42,6 +42,10 @@ export default function NavSidebar() {
           <span className={styles.icon}>📞</span>
           <span className={styles.label}>Retornos</span>
         </Link>
+        <Link href="/renovacoes" className={`${styles.navLink} ${pathname.startsWith("/renovacoes") ? styles.active : ""}`} title="Renovações">
+          <span className={styles.icon}>🔄</span>
+          <span className={styles.label}>Renovações</span>
+        </Link>
         <Link href="/funil" className={`${styles.navLink} ${pathname.startsWith("/funil") ? styles.active : ""}`} title="Funil">
           <span className={styles.icon}>🌡️</span>
           <span className={styles.label}>Funil</span>
