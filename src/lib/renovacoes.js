@@ -7,7 +7,11 @@ import { getStudents } from "./sheets";
 // sync ~/webfit-mcp/raiox-enviados-sync.mjs). Marca quem recebeu e ainda não
 // renovou = fila de cobrança do funcionário.
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
-const JANELA_FILA = 35; // dias antes do vencimento pra entrar na fila do Raio-X
+// O Raio-X dispara faltando ~30 dias pro vencimento. "Vão receber" = quem AINDA NÃO
+// cruzou esse ponto (venc > 30d) — nos próximos ~15 dias vai disparar. Quem já está
+// a <30d sem Raio-X no log recebeu ANTES do log começar (26/06) e não é "vai receber".
+const FILA_MIN = 30; // ainda não cruzou o gatilho dos 30 dias
+const FILA_MAX = 45; // horizonte de antecedência (dispara em até ~15 dias)
 
 function getCredentials() {
   if (process.env.GOOGLE_CREDENTIALS_JSON) return JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
@@ -73,9 +77,11 @@ export async function getRenovacoes() {
       const situacao = cancelado ? "cancelou" : renovou ? "renovou" : "cobrar";
       jaReceberam.push({ nome: s.nome, wa: wa || toE164(env.telefone), enviadoEm: env.enviadoEm, venc: vencBR, diasProVenc, status: s.statusPlano, situacao });
     } else {
-      // fila: ativo (não cancelado/pausado), vencendo nos próximos JANELA_FILA dias, ainda sem Raio-X
+      // fila: ativo (não cancelado/pausado), AINDA não cruzou o gatilho dos ~30 dias
+      // (venc entre FILA_MIN e FILA_MAX), sem Raio-X no log. Quem está a <30d sem
+      // Raio-X recebeu antes do log começar (26/06) — não é "vai receber", fica fora.
       if (cancelado || pausado || s.statusPlano !== "Ativo") continue;
-      if (diasProVenc == null || diasProVenc < 0 || diasProVenc > JANELA_FILA) continue;
+      if (diasProVenc == null || diasProVenc < FILA_MIN || diasProVenc > FILA_MAX) continue;
       fila.push({ nome: s.nome, wa, venc: vencBR, diasProVenc });
     }
   }

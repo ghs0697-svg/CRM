@@ -57,17 +57,20 @@ export default async function RenovacoesPage() {
             <Card label="Pra cobrar (não renovaram)" value={fmt(data.aCobrar)} cor={data.aCobrar > 0 ? "#e24b4a" : undefined} />
           </div>
 
-          <h2 style={{ fontSize: "1.05rem", fontWeight: 500, margin: "0 0 0.5rem" }}>⏳ Fila — vão receber o Raio-X (próximos {35} dias)</h2>
+          <h2 style={{ fontSize: "1.05rem", fontWeight: 500, margin: "0 0 0.15rem" }}>⏳ Fila — vão receber o Raio-X em breve</h2>
+          <p style={{ fontSize: "0.8rem", opacity: 0.6, margin: "0 0 0.5rem" }}>
+            O Raio-X dispara faltando ~30 dias pro vencimento. Estes ainda não chegaram lá: vencem entre 30 e 45 dias, então recebem nos próximos ~15 dias. (“vence em X” = dias até o plano vencer.)
+          </p>
           <div style={{ overflowX: "auto", marginBottom: "1.6rem" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
               <thead><tr><th style={th}>Aluno</th><th style={th}>Vencimento</th><th style={th}>Quando</th><th style={th}>Contato</th></tr></thead>
               <tbody>
-                {data.fila.length === 0 && <tr><td style={{ ...td, opacity: 0.5 }} colSpan={4}>Ninguém na janela agora.</td></tr>}
+                {data.fila.length === 0 && <tr><td style={{ ...td, opacity: 0.5 }} colSpan={4}>Ninguém entrando na janela agora.</td></tr>}
                 {data.fila.map((r, i) => (
                   <tr key={i}>
                     <td style={{ ...td, fontWeight: 500 }}>{r.nome}</td>
                     <td style={td}>{r.venc}</td>
-                    <td style={{ ...td, color: r.diasProVenc <= 7 ? "#ba7517" : "inherit" }}>{venceEmLabel(r.diasProVenc)}</td>
+                    <td style={{ ...td, color: r.diasProVenc <= 33 ? "#ba7517" : "inherit" }}>{venceEmLabel(r.diasProVenc)}</td>
                     <td style={td}><Wa tel={r.wa} nome={r.nome} /></td>
                   </tr>
                 ))}
@@ -75,7 +78,10 @@ export default async function RenovacoesPage() {
             </table>
           </div>
 
-          <h2 style={{ fontSize: "1.05rem", fontWeight: 500, margin: "0 0 0.5rem" }}>✅ Já receberam o Raio-X <span style={{ fontWeight: 400, opacity: 0.6, fontSize: "0.85rem" }}>(cobrar em destaque)</span></h2>
+          <h2 style={{ fontSize: "1.05rem", fontWeight: 500, margin: "0 0 0.15rem" }}>✅ Já receberam o Raio-X <span style={{ fontWeight: 400, opacity: 0.6, fontSize: "0.85rem" }}>(cobrar em destaque)</span></h2>
+          <p style={{ fontSize: "0.8rem", opacity: 0.6, margin: "0 0 0.5rem" }}>
+            Receberam o Raio-X e ainda não renovaram. “venceu há X” = o plano já venceu e ele não renovou = cobrança urgente. É a fila de trabalho: falar com cada um até renovar.
+          </p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
               <thead><tr><th style={th}>Situação</th><th style={th}>Aluno</th><th style={th}>Recebeu em</th><th style={th}>Vencimento</th><th style={th}>Contato</th></tr></thead>
@@ -99,7 +105,7 @@ export default async function RenovacoesPage() {
           </div>
 
           <p style={{ fontSize: "0.8rem", opacity: 0.55, marginTop: "0.8rem" }}>
-            Fila = ativos vencendo nos próximos {35} dias que ainda não receberam. “Recebeu em” vem do log do operário do Raio-X (atualiza de hora em hora). “Renovou” = o vencimento foi empurrado pra frente depois do envio. Vencimento pelo protocolo (com fallback pela compra).
+            Fila = ativos com vencimento entre 30 e 45 dias, que ainda não cruzaram o gatilho do Raio-X (~30 dias) e por isso ainda não receberam. “Recebeu em” vem do log do operário do Raio-X (atualiza de hora em hora, desde 26/06). “Renovou” = o vencimento foi empurrado pra frente depois do envio. Vencimento pelo protocolo (com fallback pela compra).
           </p>
         </>
       )}
