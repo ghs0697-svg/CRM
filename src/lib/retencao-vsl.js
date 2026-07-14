@@ -18,6 +18,10 @@ const VSLS = [
   { key: "vsl2", label: "VSL 2 · oferta", contexto: "Quiz do peito · a oferta / preço" },
   { key: "upsell", label: "VSL upsell · consultoria", contexto: "Pós-compra · consultoria individual" },
 ];
+// Cada VSL só conta no quiz certo (esquema #698): vsl1/vsl2 vêm do quiz do peito,
+// upsell da página de consultoria. Isso descarta teste solto (ex: quiz=diag, #725)
+// que porventura use um nome de step de VSL fora do lugar.
+const QUIZ_DE = { vsl1: "peitao", vsl2: "peitao", upsell: "consultoria" };
 // nível 0 = deu play; 1..10 = 10%..100%.
 const MARCAS = ["Deu play", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"];
 
@@ -49,6 +53,7 @@ export async function getVslRetencao() {
   for (const r of rows) {
     const p = parseStep(r[2]);
     if (!p) continue;
+    if (String(r[1] || "").trim().toLowerCase() !== QUIZ_DE[p.vid]) continue; // VSL no quiz certo
     const sid = String(r[3] || "").trim();
     if (!sid) continue;
     const m = porVsl.get(p.vid);
