@@ -58,6 +58,10 @@ export default function NavSidebar() {
           <span className={styles.icon}>🎯</span>
           <span className={styles.label}>Quiz</span>
         </Link>
+        <Link href="/retencao-vsl" className={`${styles.navLink} ${pathname.startsWith("/retencao-vsl") ? styles.active : ""}`} title="Retenção das VSLs">
+          <span className={styles.icon}>📉</span>
+          <span className={styles.label}>Retenção VSL</span>
+        </Link>
         <Link href="/faturamento" className={`${styles.navLink} ${pathname.startsWith("/faturamento") ? styles.active : ""}`} title="Faturamento">
           <span className={styles.icon}>💰</span>
           <span className={styles.label}>Receita</span>
