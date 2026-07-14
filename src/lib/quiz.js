@@ -198,10 +198,12 @@ export async function getQuizStats({ mes } = {}) {
   // Absorve a antiga aba FONTES da mestre (CRM = fonte única). step=click (cliques de
   // link, ex /ds que pula o quiz e vai pro WhatsApp) ou pageview (visitas de página).
   // Shape NÃO entra aqui (é um quiz próprio, tem funil — mereceria view própria).
+  // peitao NÃO entra aqui: virou um quiz próprio (go-live 14/07), tem funil por etapa
+  // dedicado (lib quiz-peitao.js + seção própria na página). Contá-lo como "visita"
+  // aqui duplicaria a métrica.
   const LANDING_DEFS = {
     ds:        { label: "/ds (Corredor → WhatsApp)", metrica: "cliques" },
     "ds-feed": { label: "/ds (Feed)",                metrica: "cliques" },
-    peitao:    { label: "Peitão de Pombo",           metrica: "visitas" },
     braco:     { label: "Braço de Gorila",           metrica: "visitas" },
   };
   const ms7 = Date.now() - 7 * 864e5;

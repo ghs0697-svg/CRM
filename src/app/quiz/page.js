@@ -1,4 +1,5 @@
 import { getQuizStats } from "@/lib/quiz";
+import { getPeitaoQuizStats } from "@/lib/quiz-peitao";
 import { getFunilStats } from "@/lib/funil";
 import MesFilter from "../_components/MesFilter";
 import styles from "./quiz.module.css";
@@ -51,6 +52,11 @@ export default async function QuizPage({ searchParams }) {
   let data = null;
   let err = null;
   try { data = await getQuizStats({ mes }); } catch (e) { err = String(e?.message || e); }
+
+  // Funil por etapa do quiz do Peitão (go-live 14/07, Sala #696). Guardado: se falhar,
+  // a página do metodogh segue normal.
+  let peitao = null;
+  try { peitao = await getPeitaoQuizStats(); } catch { /* segue sem o Peitão */ }
 
   // Leads do /funil (aba PAINEL) no MESMO mês do quiz, pra cruzar dia a dia:
   // Entraram no Whats (Boas Vindas) e Frio (a tag de quem entra). Guardado: se a
@@ -137,6 +143,71 @@ export default async function QuizPage({ searchParams }) {
                   <Bar key={f.key} label={f.label} count={f.sessoes} pct={f.pct} max={100} />
                 ))}
               </Section>
+
+              {peitao && (
+                <>
+                  <div style={{ borderTop: "2px solid rgba(128,128,128,0.25)", margin: "1.75rem 0 1rem" }} />
+                  <h2 className={styles.sectionTitle} style={{ fontSize: "1.15rem" }}>🕊️ Peitão de Pombo — funil do quiz por etapa</h2>
+                  <p style={{ fontSize: "0.82rem", opacity: 0.65, margin: "0 0 0.9rem" }}>
+                    O quiz virou a página inicial do peitaodepombo.com.br em 14/07. Conta só desde então (visita antiga da LP fica de fora) e vai enchendo conforme o tráfego chega.
+                  </p>
+
+                  <div className={styles.cards}>
+                    <Card label="Visitas (desde 14/07)" value={peitao.visitas.toLocaleString("pt-BR")} />
+                    <Card label="Começaram o quiz" value={`${peitao.comecaram.toLocaleString("pt-BR")} (${peitao.taxaVisitaComecou.toFixed(1).replace(".", ",")}%)`} />
+                    <Card label="Chegaram na oferta" value={peitao.chegaramOferta.toLocaleString("pt-BR")} />
+                    <Card label="Clicou em comprar" value={`${peitao.compraram.toLocaleString("pt-BR")} (${peitao.taxaComecouComprou.toFixed(1).replace(".", ",")}%)`} />
+                  </div>
+
+                  {peitao.maiorQueda && peitao.comecaram > 0 && (
+                    <div style={{ background: "rgba(226,75,74,0.1)", border: "1px solid rgba(226,75,74,0.4)", borderRadius: 8, padding: "0.6rem 0.9rem", margin: "0.5rem 0 1rem", fontSize: "0.9rem" }}>
+                      <strong>Maior abandono:</strong> entre <strong>{peitao.maiorQueda.de}</strong> e <strong>{peitao.maiorQueda.label}</strong> — só {peitao.maiorQueda.retencao.toFixed(0)}% seguiram (perdeu {peitao.maiorQueda.queda.toLocaleString("pt-BR")}).
+                    </div>
+                  )}
+
+                  <Section title="Etapa a etapa (onde o pessoal para)">
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
+                        <thead>
+                          <tr style={{ textAlign: "left", opacity: 0.6 }}>
+                            <th style={{ padding: "6px 8px" }}>#</th>
+                            <th style={{ padding: "6px 8px" }}>Etapa</th>
+                            <th style={{ padding: "6px 8px", textAlign: "right" }}>Sessões</th>
+                            <th style={{ padding: "6px 8px", textAlign: "right" }}>% das visitas</th>
+                            <th style={{ padding: "6px 8px", textAlign: "right" }}>Retenção</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {peitao.funil.map((f) => {
+                            const isDrop = peitao.maiorQueda && f.n === peitao.maiorQueda.n && peitao.comecaram > 0;
+                            const retCor = f.n === 0 ? "inherit" : f.retencao >= 80 ? "#1d9e75" : f.retencao >= 50 ? "#ba7517" : "#e24b4a";
+                            return (
+                              <tr key={f.key} style={{ borderTop: "1px solid rgba(128,128,128,0.18)", background: isDrop ? "rgba(226,75,74,0.1)" : "transparent" }}>
+                                <td style={{ padding: "6px 8px", opacity: 0.5 }}>n{f.n}</td>
+                                <td style={{ padding: "6px 8px", fontWeight: f.n <= 1 ? 600 : 400 }}>{f.label}</td>
+                                <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600 }}>{f.sessoes.toLocaleString("pt-BR")}</td>
+                                <td style={{ padding: "6px 8px", textAlign: "right", opacity: 0.8 }}>{f.pctVisitas.toFixed(1).replace(".", ",")}%</td>
+                                <td style={{ padding: "6px 8px", textAlign: "right", color: retCor }}>{f.n === 0 ? "—" : `${f.retencao.toFixed(0)}%`}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p style={{ fontSize: "0.8rem", opacity: 0.6, marginTop: "0.5rem" }}>
+                      “Retenção” = % que passou da etapa anterior pra essa (a linha vermelha é o maior gargalo). “Sessões” = quantas pessoas chegaram até aquela etapa. n13 é a VSL do mecanismo, n19 a oferta/preço, n20 o clique em comprar.
+                    </p>
+                  </Section>
+
+                  {peitao.porFonte.length > 0 && (
+                    <Section title="Peitão — por fonte (quem começou o quiz)">
+                      {peitao.porFonte.map((f) => (
+                        <Bar key={f.fonte} label={f.fonte} count={f.count} pct={f.pct} max={Math.max(1, ...peitao.porFonte.map((x) => x.pct))} />
+                      ))}
+                    </Section>
+                  )}
+                </>
+              )}
 
               <Section title="Por fonte">
                 {data.porFonte.map((f) => (
