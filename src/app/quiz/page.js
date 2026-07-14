@@ -2,6 +2,7 @@ import { getQuizStats } from "@/lib/quiz";
 import { getPeitaoQuizStats } from "@/lib/quiz-peitao";
 import { getFunilStats } from "@/lib/funil";
 import MesFilter from "../_components/MesFilter";
+import VersaoFilter from "../_components/VersaoFilter";
 import styles from "./quiz.module.css";
 
 export const runtime = "nodejs";
@@ -48,6 +49,7 @@ function Bar({ label, count, pct, max }) {
 export default async function QuizPage({ searchParams }) {
   const sp = (await searchParams) || {};
   const mes = typeof sp.mes === "string" ? sp.mes : undefined;
+  const pv = typeof sp.pv === "string" ? sp.pv : undefined; // versão do quiz Peitão
 
   let data = null;
   let err = null;
@@ -56,7 +58,7 @@ export default async function QuizPage({ searchParams }) {
   // Funil por etapa do quiz do Peitão (go-live 14/07, Sala #696). Guardado: se falhar,
   // a página do metodogh segue normal.
   let peitao = null;
-  try { peitao = await getPeitaoQuizStats(); } catch { /* segue sem o Peitão */ }
+  try { peitao = await getPeitaoQuizStats({ versao: pv }); } catch { /* segue sem o Peitão */ }
 
   // Leads do /funil (aba PAINEL) no MESMO mês do quiz, pra cruzar dia a dia:
   // Entraram no Whats (Boas Vindas) e Frio (a tag de quem entra). Guardado: se a
@@ -147,9 +149,12 @@ export default async function QuizPage({ searchParams }) {
               {peitao && (
                 <>
                   <div style={{ borderTop: "2px solid rgba(128,128,128,0.25)", margin: "1.75rem 0 1rem" }} />
-                  <h2 className={styles.sectionTitle} style={{ fontSize: "1.15rem" }}>🕊️ Peitão de Pombo — funil do quiz por etapa</h2>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", marginBottom: "0.4rem" }}>
+                    <h2 className={styles.sectionTitle} style={{ fontSize: "1.15rem", margin: 0 }}>🕊️ Peitão de Pombo — funil do quiz por etapa</h2>
+                    {peitao.versoes.length > 1 && <VersaoFilter versoes={peitao.versoes} versaoSel={peitao.versaoSel} base="/quiz" />}
+                  </div>
                   <p style={{ fontSize: "0.82rem", opacity: 0.65, margin: "0 0 0.9rem" }}>
-                    O quiz virou a página inicial do peitaodepombo.com.br em 14/07. Conta só desde então (visita antiga da LP fica de fora) e vai enchendo conforme o tráfego chega.
+                    Versão <strong>{peitao.versaoSel}</strong>{peitao.versaoObs ? ` — ${peitao.versaoObs}` : ""}. Conta só as sessões dessa versão (cada edição do quiz vira uma versão nova; o histórico inteiro fica guardado na planilha). Enche conforme o tráfego chega.
                   </p>
 
                   <div className={styles.cards}>

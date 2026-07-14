@@ -2,15 +2,20 @@ import { google } from "googleapis";
 
 // Funil por etapa do QUIZ do Peitão de Pombo, lido da MESMA aba "LOG QUIZ" da mestre
 // (quiz=peitao). O quiz substituiu a LP e virou a raiz de peitaodepombo.com.br em
-// 2026-07-14 (Sala #696). Colunas: A Data/Hora · B Quiz · C Etapa(step) · D Sessão(sid)
-// · E Fonte · F Pergunta · G Resposta. O índice n0..n20 do #696 vira ordem canônica
-// pelos NOMES dos steps (o track.js não grava o n numa coluna).
+// 2026-07-14 (Sala #696). Colunas LOG QUIZ: A Data/Hora · B Quiz · C Etapa(step) ·
+// D Sessão(sid) · E Fonte · F Pergunta · G Resposta. O índice n0..n20 (#696) vira
+// ordem canônica pelos NOMES dos steps (o track.js não grava o n numa coluna).
 //
-// CORTE 14/07: antes do go-live, quiz=peitao só tinha step=pageview (visitas da LP
-// antiga). Sem corte, o topo do funil fica inflado por visita histórica.
+// VERSÕES: o GH edita o quiz ao longo do tempo (reordena/renomeia/tira etapas). Pra
+// não misturar versões, o funil filtra pela JANELA da versão escolhida. As versões
+// vivem na aba QUIZ_VERSOES (quiz | versao | inicio | obs); a janela de cada uma vai
+// do seu "inicio" até o "inicio" da próxima. Adicionar versão = 1 linha lá (sem
+// deploy). Nada é apagado da LOG QUIZ: só muda o recorte exibido. Padrão = a última.
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
 const TAB = "LOG QUIZ";
-const CUTOFF = Date.UTC(2026, 6, 14); // 14/07/2026 00:00 UTC (mês 6 = julho)
+const TAB_VERSOES = "QUIZ_VERSOES";
+// Fallback se a aba de versões sumir: trata como uma versão única desde o go-live.
+const FALLBACK_INICIO = Date.UTC(2026, 6, 14, 3, 0, 0); // 14/07/2026 00:00 BRT
 
 // Ordem canônica dos 21 passos (Sala #696): n0 pageview ... n20 checkout_click.
 const STEP_ORDER = [
@@ -19,7 +24,6 @@ const STEP_ORDER = [
   "tempo_sessao", "t_prova", "proc", "result", "oferta", "checkout_click",
 ];
 const STEP_IDX = new Map(STEP_ORDER.map((s, i) => [s, i]));
-// Rótulos amigáveis (o GH lê isso no painel).
 const STEP_LABEL = {
   pageview: "Entrou na página", idade: "Idade", estado: "Estado",
   t_autoridade: "Texto de autoridade", tempo_treino: "Tempo de treino", freq: "Frequência",
@@ -37,54 +41,77 @@ function getCredentials() {
   return { client_email: process.env.GOOGLE_CLIENT_EMAIL, private_key, project_id: process.env.GOOGLE_PROJECT_ID };
 }
 const round1 = (x) => Math.round(x * 10) / 10;
-
-// col A mista (texto "DD/MM/YYYY..." OU serial do Sheets) → timestamp UTC do dia (ou null).
 function serialToMs(num) { const ms = Math.round((num - 25569) * 86400000); return Number.isFinite(ms) ? ms : null; }
-function cellToTs(cell) {
+// col mista → instante UTC. Texto "DD/MM/YYYY[, HH:MM:SS]" é hora de BRT (UTC-3) →
+// soma 3h. Serial do Sheets → aproximação (só afeta linhas antigas, fora das janelas).
+function cellToMs(cell) {
   if (cell == null || cell === "") return null;
   const s = String(cell).trim();
-  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1]);
+  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1], (m[4] ? +m[4] : 0) + 3, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0);
   const num = parseFloat(s.replace(",", "."));
   if (!isNaN(num) && num > 30000 && num < 90000) return serialToMs(num);
   return null;
 }
 
-export async function getPeitaoQuizStats() {
+async function lerVersoes(sheets) {
+  try {
+    const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB_VERSOES}!A2:D` })).data.values || [];
+    const vs = rows
+      .filter((r) => String(r[0] || "").trim().toLowerCase() === "peitao")
+      .map((r) => ({ label: String(r[1] || "").trim() || "versão", iniMs: cellToMs(r[2]), obs: String(r[3] || "").trim() }))
+      .filter((v) => v.iniMs != null)
+      .sort((a, b) => a.iniMs - b.iniMs);
+    if (vs.length) return vs;
+  } catch { /* aba pode não existir */ }
+  return [{ label: "atual", iniMs: FALLBACK_INICIO, obs: "" }];
+}
+
+export async function getPeitaoQuizStats({ versao } = {}) {
   if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
   const auth = new google.auth.GoogleAuth({ credentials: getCredentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"] });
   const sheets = google.sheets({ version: "v4", auth });
+
+  const versoesAsc = await lerVersoes(sheets); // início asc
+  // Janela de cada versão: [ini, próximo ini). Escolhida = por rótulo, senão a última.
+  const idxSel = (() => {
+    if (versao) { const i = versoesAsc.findIndex((v) => v.label === versao); if (i >= 0) return i; }
+    return versoesAsc.length - 1;
+  })();
+  const sel = versoesAsc[idxSel];
+  const iniMs = sel.iniMs;
+  const fimMs = idxSel + 1 < versoesAsc.length ? versoesAsc[idxSel + 1].iniMs : Infinity;
+  // pra o dropdown: mais recente primeiro.
+  const versoes = [...versoesAsc].reverse().map((v) => ({ label: v.label, obs: v.obs }));
+
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB}!A2:G` });
   const rows = res.data.values || [];
 
-  // Por sessão (sid): maior índice de step alcançado + 1ª fonte. Só quiz=peitao, pós-corte.
+  // Por sessão: maior índice de step + 1º ts (define a versão) + fonte. Só quiz=peitao.
   const sessions = new Map();
-  let totalEventos = 0, stepsForaDoQuiz = 0;
   for (const r of rows) {
     if (String(r[1] || "").trim().toLowerCase() !== "peitao") continue;
-    const ts = cellToTs(r[0]);
-    if (ts !== null && ts < CUTOFF) continue; // corte 14/07 (null = mantém, raríssimo)
     const sid = String(r[3] || "").trim();
     if (!sid) continue;
-    totalEventos++;
     const step = String(r[2] || "").trim().toLowerCase();
     const idx = STEP_IDX.has(step) ? STEP_IDX.get(step) : -1;
-    if (step && idx === -1) { stepsForaDoQuiz++; continue; }
+    if (idx === -1) continue; // step fora do quiz atual (versão antiga renomeada etc.)
+    const ts = cellToMs(r[0]);
     const fonte = String(r[4] || "").trim().toLowerCase() || "(sem fonte)";
     let s = sessions.get(sid);
-    if (!s) { s = { maxIdx: -1, fonte }; sessions.set(sid, s); }
+    if (!s) { s = { maxIdx: -1, ts: null, fonte }; sessions.set(sid, s); }
     if (idx > s.maxIdx) s.maxIdx = idx;
+    if (ts != null && (s.ts == null || ts < s.ts)) s.ts = ts; // 1º evento = início da sessão
     if ((!s.fonte || s.fonte === "(sem fonte)") && fonte !== "(sem fonte)") s.fonte = fonte;
   }
 
-  const all = [...sessions.values()];
+  // Só as sessões cujo início cai na janela da versão selecionada.
+  const all = [...sessions.values()].filter((s) => s.ts != null && s.ts >= iniMs && s.ts < fimMs);
   const visitas = all.filter((s) => s.maxIdx >= IDX_PAGEVIEW).length;
   const comecaram = all.filter((s) => s.maxIdx >= IDX_COMECOU).length;
   const chegaramOferta = all.filter((s) => s.maxIdx >= IDX_OFERTA).length;
   const compraram = all.filter((s) => s.maxIdx >= IDX_COMPROU).length;
 
-  // Funil: cada etapa = nº de sessões que a ALCANÇARAM (maxIdx >= n). Retenção = % da
-  // etapa anterior (é aí que se vê ONDE abandona: menor retenção = maior queda).
   const funil = STEP_ORDER.map((step, i) => {
     const sessoes = all.filter((s) => s.maxIdx >= i).length;
     return { n: i, key: step, label: STEP_LABEL[step] || step, sessoes,
@@ -96,14 +123,12 @@ export async function getPeitaoQuizStats() {
     funil[i].retencao = prev ? round1((funil[i].sessoes / prev) * 100) : 0;
     funil[i].queda = i > 0 ? Math.max(0, prev - funil[i].sessoes) : 0;
   }
-  // Maior queda (só entre etapas com base > 0), pra destacar "onde perde mais gente".
   let maiorQueda = null;
   for (let i = 1; i < funil.length; i++) {
     if (funil[i - 1].sessoes <= 0) continue;
     if (!maiorQueda || funil[i].retencao < maiorQueda.retencao) maiorQueda = { ...funil[i], de: funil[i - 1].label };
   }
 
-  // Por fonte de quem começou (>= idade).
   const fonteMap = new Map();
   for (const s of all) if (s.maxIdx >= IDX_COMECOU) fonteMap.set(s.fonte, (fonteMap.get(s.fonte) || 0) + 1);
   const porFonte = [...fonteMap.entries()].map(([fonte, count]) => ({ fonte, count, pct: comecaram ? round1((count / comecaram) * 100) : 0 })).sort((a, b) => b.count - a.count);
@@ -112,6 +137,7 @@ export async function getPeitaoQuizStats() {
     visitas, comecaram, chegaramOferta, compraram,
     taxaVisitaComecou: visitas ? round1((comecaram / visitas) * 100) : 0,
     taxaComecouComprou: comecaram ? round1((compraram / comecaram) * 100) : 0,
-    funil, maiorQueda, porFonte, totalEventos, stepsForaDoQuiz,
+    funil, maiorQueda, porFonte,
+    versoes, versaoSel: sel.label, versaoObs: sel.obs,
   };
 }
