@@ -32,6 +32,26 @@ function getCredentials() {
 }
 const round1 = (x) => Math.round(x * 10) / 10;
 
+// Corte "zerar retenção": só conta sessões a partir de CRM_CONFIG!retencao_vsl_desde
+// (o GH carimba a data/hora atual quando quer zerar os testes dele). null = sem corte.
+function serialToMs(num) { const ms = Math.round((num - 25569) * 86400000); return Number.isFinite(ms) ? ms : null; }
+function cellToMs(cell) {
+  if (cell == null || cell === "") return null;
+  const s = String(cell).trim();
+  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1], (m[4] ? +m[4] : 0) + 3, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0);
+  const num = parseFloat(s.replace(",", "."));
+  if (!isNaN(num) && num > 30000 && num < 90000) return serialToMs(num);
+  return null;
+}
+async function lerCorte(sheets) {
+  try {
+    const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: "CRM_CONFIG!A2:B" })).data.values || [];
+    for (const r of rows) if (String(r[0] || "").trim() === "retencao_vsl_desde") return cellToMs(r[1]);
+  } catch { /* sem config = sem corte */ }
+  return null;
+}
+
 // step "vsl1_play" -> {vid:"vsl1", nivel:0}; "vsl1_p30" -> {vid, nivel:3}; senão null.
 function parseStep(step) {
   const m = String(step || "").trim().toLowerCase().match(/^(vsl1|vsl2|upsell)_(play|p(\d{1,3}))$/);
@@ -46,9 +66,10 @@ export async function getVslRetencao() {
   if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
   const auth = new google.auth.GoogleAuth({ credentials: getCredentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"] });
   const sheets = google.sheets({ version: "v4", auth });
+  const corteMs = await lerCorte(sheets); // zerar retenção: só conta a partir daqui
   const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB}!A2:G` })).data.values || [];
 
-  // Por VSL: Map<sid, maiorNivel>.
+  // Por VSL: Map<sid, { n: maiorNivel, ts: 1º evento }>.
   const porVsl = new Map(VSLS.map((v) => [v.key, new Map()]));
   for (const r of rows) {
     const p = parseStep(r[2]);
@@ -56,14 +77,17 @@ export async function getVslRetencao() {
     if (String(r[1] || "").trim().toLowerCase() !== QUIZ_DE[p.vid]) continue; // VSL no quiz certo
     const sid = String(r[3] || "").trim();
     if (!sid) continue;
+    const ts = cellToMs(r[0]);
     const m = porVsl.get(p.vid);
     const cur = m.get(sid);
-    if (cur == null || p.nivel > cur) m.set(sid, p.nivel);
+    if (!cur) m.set(sid, { n: p.nivel, ts });
+    else { if (p.nivel > cur.n) cur.n = p.nivel; if (ts != null && (cur.ts == null || ts < cur.ts)) cur.ts = ts; }
   }
 
   const vsls = VSLS.map((v) => {
     const m = porVsl.get(v.key);
-    const sids = [...m.values()];
+    // aplica o corte de "zerar": só sessões cujo 1º evento é >= o corte.
+    const sids = [...m.values()].filter((o) => corteMs == null || (o.ts != null && o.ts >= corteMs)).map((o) => o.n);
     const play = sids.length; // qualquer evento da VSL implica que deu play (nível >= 0)
     // curva: nº de sessões com maiorNivel >= L, pra cada marca.
     const curva = MARCAS.map((marca, L) => {
