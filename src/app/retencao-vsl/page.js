@@ -17,6 +17,7 @@ function Curva({ vsl }) {
         </div>
         <div style={{ fontSize: "0.9rem", textAlign: "right" }}>
           <strong>{fmt(vsl.play)}</strong> deram play · <strong>{fmt(vsl.assistiuTudo)}</strong> até o fim ({pct(vsl.pctAssistiuTudo)})
+          {vsl.duracaoLabel && <div style={{ fontSize: "0.8rem", opacity: 0.6 }}>vídeo de {vsl.duracaoLabel}</div>}
         </div>
       </div>
 
@@ -31,13 +32,17 @@ function Curva({ vsl }) {
         {vsl.play > 0 && vsl.curva.map((c) => {
           const isAlvo = c.marca === alvoQueda && vsl.maiorQueda.dropPct > 0;
           return (
-            <div key={c.marca} style={{ display: "flex", alignItems: "center", gap: "0.6rem", margin: "3px 0" }}>
-              <span style={{ width: 70, fontSize: "0.82rem", opacity: 0.75, textAlign: "right", fontWeight: c.nivel === 0 || c.nivel === 10 ? 600 : 400 }}>{c.marca}</span>
+            <div key={c.marca} style={{ display: "flex", alignItems: "center", gap: "0.6rem", margin: "4px 0" }}>
+              <span style={{ width: 82, textAlign: "right", lineHeight: 1.15 }}>
+                <span style={{ fontSize: "0.82rem", opacity: 0.8, fontWeight: c.nivel === 0 || c.nivel === 10 ? 600 : 400 }}>{c.marca}</span>
+                {c.segLabel && <span style={{ display: "block", fontSize: "0.72rem", opacity: 0.5 }}>{c.segLabel}</span>}
+              </span>
               <div style={{ flex: 1, height: 16, background: "rgba(128,128,128,0.15)", borderRadius: 4, overflow: "hidden" }}>
                 <div style={{ width: `${Math.max(1, c.pct)}%`, height: "100%", background: isAlvo ? "#e24b4a" : "#4a7fe2", borderRadius: 4 }} />
               </div>
-              <span style={{ width: 92, fontSize: "0.82rem", textAlign: "right" }}>
-                {fmt(c.sessoes)} <em style={{ opacity: 0.6 }}>({pct(c.pct)})</em>
+              <span style={{ width: 104, fontSize: "0.82rem", textAlign: "right", lineHeight: 1.15 }}>
+                <span>{fmt(c.sessoes)} <em style={{ opacity: 0.6 }}>({pct(c.pct)})</em></span>
+                {c.segLabel && <span style={{ display: "block", fontSize: "0.72rem", opacity: 0.5 }}>{c.segLabel} do vídeo</span>}
               </span>
             </div>
           );

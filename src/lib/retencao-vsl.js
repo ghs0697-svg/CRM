@@ -44,13 +44,17 @@ function cellToMs(cell) {
   if (!isNaN(num) && num > 30000 && num < 90000) return serialToMs(num);
   return null;
 }
-async function lerCorte(sheets) {
+async function lerConfig(sheets) {
+  const cfg = new Map();
   try {
     const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: "CRM_CONFIG!A2:B" })).data.values || [];
-    for (const r of rows) if (String(r[0] || "").trim() === "retencao_vsl_desde") return cellToMs(r[1]);
-  } catch { /* sem config = sem corte */ }
-  return null;
+    for (const r of rows) { const k = String(r[0] || "").trim(); if (k) cfg.set(k, String(r[1] || "").trim()); }
+  } catch { /* sem config */ }
+  return cfg;
 }
+// segundos -> "m:ss"
+const mmss = (s) => { const t = Math.max(0, Math.round(s)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+const DUR_KEY = { vsl1: "vsl1_duracao_s", vsl2: "vsl2_duracao_s", upsell: "upsell_duracao_s" };
 
 // step "vsl1_play" -> {vid:"vsl1", nivel:0}; "vsl1_p30" -> {vid, nivel:3}; senão null.
 function parseStep(step) {
@@ -66,7 +70,8 @@ export async function getVslRetencao() {
   if (!SPREADSHEET_ID) throw new Error("GOOGLE_SHEETS_ID não definido");
   const auth = new google.auth.GoogleAuth({ credentials: getCredentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"] });
   const sheets = google.sheets({ version: "v4", auth });
-  const corteMs = await lerCorte(sheets); // zerar retenção: só conta a partir daqui
+  const cfg = await lerConfig(sheets);
+  const corteMs = cellToMs(cfg.get("retencao_vsl_desde")); // zerar retenção: só conta a partir daqui
   const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB}!A2:G` })).data.values || [];
 
   // Por VSL: Map<sid, { n: maiorNivel, ts: 1º evento }>.
@@ -89,10 +94,14 @@ export async function getVslRetencao() {
     // aplica o corte de "zerar": só sessões cujo 1º evento é >= o corte.
     const sids = [...m.values()].filter((o) => corteMs == null || (o.ts != null && o.ts >= corteMs)).map((o) => o.n);
     const play = sids.length; // qualquer evento da VSL implica que deu play (nível >= 0)
+    // duração do vídeo (CRM_CONFIG) → segundo de cada marca (10% = 10% da duração).
+    const durS = parseFloat(cfg.get(DUR_KEY[v.key]));
+    const duracaoS = Number.isFinite(durS) && durS > 0 ? durS : null;
     // curva: nº de sessões com maiorNivel >= L, pra cada marca.
     const curva = MARCAS.map((marca, L) => {
       const sessoes = sids.filter((n) => n >= L).length;
-      return { marca, nivel: L, sessoes, pct: play ? round1((sessoes / play) * 100) : 0 };
+      const seg = duracaoS != null ? (L * duracaoS) / 10 : null;
+      return { marca, nivel: L, sessoes, pct: play ? round1((sessoes / play) * 100) : 0, seg, segLabel: seg != null ? mmss(seg) : null };
     });
     for (let i = 0; i < curva.length; i++) {
       const prev = i > 0 ? curva[i - 1].sessoes : curva[i].sessoes;
@@ -107,7 +116,8 @@ export async function getVslRetencao() {
     }
     const assistiuTudo = curva[10].sessoes;
     return { key: v.key, label: v.label, contexto: v.contexto, play, assistiuTudo,
-      pctAssistiuTudo: play ? round1((assistiuTudo / play) * 100) : 0, curva, maiorQueda };
+      pctAssistiuTudo: play ? round1((assistiuTudo / play) * 100) : 0,
+      duracaoS, duracaoLabel: duracaoS != null ? mmss(duracaoS) : null, curva, maiorQueda };
   });
 
   return { vsls };
