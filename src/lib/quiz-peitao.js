@@ -18,22 +18,34 @@ const TAB_VERSOES = "QUIZ_VERSOES";
 const FALLBACK_INICIO = Date.UTC(2026, 6, 14, 3, 0, 0); // 14/07/2026 00:00 BRT
 
 // Ordem canônica dos 21 passos (Sala #696): n0 pageview ... n20 checkout_click.
-const STEP_ORDER = [
-  "pageview", "idade", "estado", "t_autoridade", "tempo_treino", "freq", "desafio",
-  "t_historia", "execucao", "cansa", "pico", "regiao", "conhece", "vsl1", "pos_vsl",
-  "tempo_sessao", "t_prova", "proc", "result", "oferta", "checkout_click",
-];
-const STEP_IDX = new Map(STEP_ORDER.map((s, i) => [s, i]));
+// O mapa de etapas MUDA quando o quiz é reestruturado. Cada versão (QUIZ_VERSOES,
+// col mapa) aponta pro seu mapa aqui. Como o log guarda o step por NOME, o funil de
+// cada versão usa a ordem certa e não mistura. Fonte de verdade = o index.html do quiz.
+const MAPS = {
+  // v1/v2 (go-live 14/07): 17 perguntas, result n18.
+  v1: [
+    "pageview", "idade", "estado", "t_autoridade", "tempo_treino", "freq", "desafio",
+    "t_historia", "execucao", "cansa", "pico", "regiao", "conhece", "vsl1", "pos_vsl",
+    "tempo_sessao", "t_prova", "proc", "result", "oferta", "checkout_click",
+  ],
+  // v3 (17/07, Sala #798): +barra (n9, entre execucao e cansa) +anota (n12, entre pico
+  // e regiao). 19 perguntas, result n20, oferta n21, checkout n22.
+  v3: [
+    "pageview", "idade", "estado", "t_autoridade", "tempo_treino", "freq", "desafio",
+    "t_historia", "execucao", "barra", "cansa", "pico", "anota", "regiao", "conhece",
+    "vsl1", "pos_vsl", "tempo_sessao", "t_prova", "proc", "result", "oferta", "checkout_click",
+  ],
+};
 const STEP_LABEL = {
   pageview: "Entrou na página", idade: "Idade", estado: "Estado",
   t_autoridade: "Texto de autoridade", tempo_treino: "Tempo de treino", freq: "Frequência",
   desafio: "Maior desafio", t_historia: "Texto de história", execucao: "Execução",
-  cansa: "O que cansa", pico: "Pico de treino", regiao: "Região", conhece: "Já conhece o método",
+  barra: "Até onde a barra desce", cansa: "O que cansa", pico: "Pico de treino",
+  anota: "Anota a carga?", regiao: "Região", conhece: "Já conhece o método",
   vsl1: "VSL 1 (mecanismo)", pos_vsl: "Depois da VSL 1", tempo_sessao: "Tempo por sessão",
   t_prova: "Texto de prova", proc: "Procrastinação", result: "Resultado (diagnóstico)",
   oferta: "Oferta (VSL 2 / preço)", checkout_click: "Clicou em comprar",
 };
-const IDX_PAGEVIEW = 0, IDX_COMECOU = 1, IDX_OFERTA = STEP_IDX.get("oferta"), IDX_COMPROU = STEP_IDX.get("checkout_click");
 
 function getCredentials() {
   if (process.env.GOOGLE_CREDENTIALS_JSON) return JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
@@ -56,15 +68,15 @@ function cellToMs(cell) {
 
 async function lerVersoes(sheets) {
   try {
-    const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB_VERSOES}!A2:D` })).data.values || [];
+    const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB_VERSOES}!A2:E` })).data.values || [];
     const vs = rows
       .filter((r) => String(r[0] || "").trim().toLowerCase() === "peitao")
-      .map((r) => ({ label: String(r[1] || "").trim() || "versão", iniMs: cellToMs(r[2]), obs: String(r[3] || "").trim() }))
+      .map((r) => ({ label: String(r[1] || "").trim() || "versão", iniMs: cellToMs(r[2]), obs: String(r[3] || "").trim(), mapa: String(r[4] || "").trim() || "v1" }))
       .filter((v) => v.iniMs != null)
       .sort((a, b) => a.iniMs - b.iniMs);
     if (vs.length) return vs;
   } catch { /* aba pode não existir */ }
-  return [{ label: "atual", iniMs: FALLBACK_INICIO, obs: "" }];
+  return [{ label: "atual", iniMs: FALLBACK_INICIO, obs: "", mapa: "v3" }];
 }
 
 export async function getPeitaoQuizStats({ versao } = {}) {
@@ -83,6 +95,13 @@ export async function getPeitaoQuizStats({ versao } = {}) {
   const fimMs = idxSel + 1 < versoesAsc.length ? versoesAsc[idxSel + 1].iniMs : Infinity;
   // pra o dropdown: mais recente primeiro.
   const versoes = [...versoesAsc].reverse().map((v) => ({ label: v.label, obs: v.obs }));
+
+  // Mapa de etapas DESTA versão (v1 antigo, v3 com barra/anota). Interpreto os steps
+  // com o mapa da versão selecionada — sessões de outras versões são filtradas fora.
+  const STEP_ORDER = MAPS[sel.mapa] || MAPS.v1;
+  const STEP_IDX = new Map(STEP_ORDER.map((s, i) => [s, i]));
+  const IDX_PAGEVIEW = 0, IDX_COMECOU = 1;
+  const IDX_OFERTA = STEP_IDX.get("oferta"), IDX_COMPROU = STEP_IDX.get("checkout_click");
 
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${TAB}!A2:G` });
   const rows = res.data.values || [];
