@@ -466,7 +466,9 @@ function RenovacaoModal({ aluno, onClose, onSuccess }) {
         return;
       }
       try {
-        const qs = new URLSearchParams(cpf ? { cpf } : { phone }).toString();
+        // manda os DOIS (Sala #776): CPF vazio/inválido é comum nos alunos recentes,
+        // e o telefone cobre todo mundo. Mandar só um deixa esses de fora.
+        const qs = new URLSearchParams({ ...(cpf ? { cpf } : {}), ...(phone ? { phone } : {}) }).toString();
         const res = await fetch(`/api/renovacao?${qs}`, { cache: "no-store" });
         const json = await res.json();
         if (cancel) return;
@@ -564,6 +566,29 @@ function RenovacaoModal({ aluno, onClose, onSuccess }) {
               {loading && <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: 8 }}>Carregando dados do aluno…</div>}
               {loadErr && <div className={styles.formError}>{loadErr}</div>}
               {error && <div className={styles.formError}>{error}</div>}
+
+              {/* Renovação paga na Greenn já entra sozinha (o Make chama o mesmo endpoint
+                  daqui). Este botão é o caminho manual pro que NÃO passa pela Greenn. */}
+              <div style={{ padding: "8px 12px", background: "var(--surface-2, #f3f4f6)", borderRadius: 8, fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12 }}>
+                💡 Renovação paga na <strong>Greenn</strong> entra sozinha, não precisa registrar aqui. Use este botão para pagamento <strong>fora da Greenn</strong> (Pix, cartão pelo comercial). Se cair em duplicidade, a mestre barra sozinha no mesmo dia.
+              </div>
+
+              {cons?.homonimo && (
+                <div style={{ padding: "10px 12px", background: "rgba(226,75,74,0.12)", border: "1px solid #e24b4a", borderRadius: 8, fontSize: "0.82rem", marginBottom: 12, lineHeight: 1.45 }}>
+                  <strong style={{ color: "#e24b4a" }}>⚠️ Atenção: existem {cons.homonimo.pessoas.length} alunos diferentes com o nome “{cons.homonimo.nome}”.</strong>
+                  <div style={{ marginTop: 6 }}>
+                    {cons.homonimo.pessoas.map((p) => (
+                      <div key={p.telefone || p.linhas.join()}>
+                        • tel <strong>…{String(p.telefone || "").slice(-4) || "?"}</strong> · linha {p.linhas.join(", ")} · {p.status}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    A mestre agrupa as linhas <strong>pelo nome</strong>, então os dados acima (versão, link do app) podem ter vindo do aluno errado.
+                    <strong> Confira o telefone antes de renovar</strong> — se não bater com quem pagou, não registre por aqui e me avise.
+                  </div>
+                </div>
+              )}
 
               {cons && (
                 <div style={{ padding: "10px 12px", background: "var(--surface-2, #f3f4f6)", borderRadius: 8, fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: 12 }}>

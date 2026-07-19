@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAlunoConsolidado, registrarRenovacao } from "@/lib/renovacao";
+import { getAlunoConsolidado, registrarRenovacao, checarHomonimo } from "@/lib/renovacao";
 import { auth } from "@/auth";
 
 export const runtime = "nodejs";
@@ -14,6 +14,17 @@ export async function GET(req) {
     }
     const sp = new URL(req.url).searchParams;
     const data = await getAlunoConsolidado({ cpf: sp.get("cpf"), phone: sp.get("phone") });
+    // Trava de homônimo (Sala #820/#821): o alunoConsolidado_ agrupa por NOME, então
+    // com 2 alunos de mesmo nome ele mistura os dois. Aviso antes de deixar renovar.
+    // Guardado: se a checagem falhar, a renovação segue (não trava o operador por isso).
+    if (data?.found && data?.nome) {
+      try {
+        const homonimo = await checarHomonimo({ nome: data.nome });
+        if (homonimo) data.homonimo = homonimo;
+      } catch (e) {
+        console.error("[GET /api/renovacao] checarHomonimo falhou:", e?.message || e);
+      }
+    }
     return NextResponse.json(data);
   } catch (err) {
     console.error("[GET /api/renovacao] erro:", err);
